@@ -100,5 +100,7 @@ if __name__ == "__main__":
     print(puuid)
     summoner_id = safe_get(f"https://{PLATFORM_URL}/lol/summoner/v4/summoners/by-puuid/{puuid}")
     print(summoner_id["profileIconId"])
-    current_match = safe_get(f"https://{PLATFORM_URL}/lol/spectator/v5/active-games/by-summoner/{puuid}")
-    print(current_match) # get match details
+    # current_match = safe_get(f"https://{PLATFORM_URL}/lol/spectator/v5/active-games/by-summoner/{puuid}")
+    # print(current_match) # get match details
+    match_ids = safe_get(f"https://{REGION_URL}/lol/match/v5/matches/by-puuid/{puuid}/ids", params={"startTime": 1778799600, "start": 0, "count": 20})
+    print(match_ids)
