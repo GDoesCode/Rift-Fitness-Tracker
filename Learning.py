@@ -54,6 +54,21 @@ def init_db(connection):
     )""")
     connection.commit()
 
+    # --- Riot endpoints (no wrapper) ---
+def get_summoner_by_name(platform, summoner_name):
+    name_enc = quote_plus(summoner_name)
+    url = f"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-name/{name_enc}"
+    return safe_get(url)
+
+def get_match_ids_by_puuid(continent, puuid, count=20, start=0):
+    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
+    params = {"start": start, "count": count}
+    return safe_get(url, params=params)
+
+def get_match_by_id(continent, match_id):
+    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+    return safe_get(url)
+
 def kda_to_database():
     connection = sqlite3.connect(DATABASE_FILE)
     init_db(connection)
@@ -104,3 +119,4 @@ if __name__ == "__main__":
     # print(current_match) # get match details
     match_ids = safe_get(f"https://{REGION_URL}/lol/match/v5/matches/by-puuid/{puuid}/ids", params={"startTime": 1778799600, "start": 0, "count": 20})
     print(match_ids)
+    kda_to_database()
