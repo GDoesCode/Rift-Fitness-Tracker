@@ -2,22 +2,26 @@
 import os
 import time
 import requests
-import sqlite3
+import psycopg2
 from urllib.parse import quote_plus
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Configuration ---
 API_KEY = os.environ.get("RIOT_API_KEY")
 if not API_KEY:
     raise SystemExit("Set RIOT_API_KEY environment variable")
 
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise SystemExit("Set DATABASE_URL environment variable")
+
 # Platform routing value for summoner endpoints (e.g., "na1", "euw1", "kr")
 PLATFORM = "euw1"
 # Continent routing for match-v5 (AMERICAS, EUROPE, ASIA)
 CONTINENT = "EUROPE"
 SUMMONER_NAME = "JustG#01G"  # change this
-
-# SQLite DB file
-DB_FILE = "kda.db"
 
 # --- Helper: requests session with default headers ---
 session = requests.Session()
@@ -65,25 +69,36 @@ def get_match_by_id(continent, match_id):
     return safe_get(url)
 
 # --- DB helpers ---
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
+
 def init_db(conn):
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS matches(
-        match_id TEXT PRIMARY KEY,
-        timestamp INTEGER,
-        champion TEXT,
-        kills INTEGER,
-        deaths INTEGER,
-        assists INTEGER,
-        kda REAL
-    )""")
-    conn.commit()
+    with conn.cursor() as cur:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS matches(
+            match_id TEXT PRIMARY KEY,
+            timestamp BIGINT,
+            champion TEXT,
+            kills INTEGER,
+            deaths INTEGER,
+            assists INTEGER,
+            kda REAL
+        )""")
+        conn.commit()
+
+def match_exists(conn, match_id):
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM matches WHERE match_id = %s", (match_id,))
+        return cur.fetchone() is not None
 
 def store_match(conn, match_id, timestamp, champ, k, d, a, kda):
-    conn.execute(
-        "INSERT OR IGNORE INTO matches(match_id, timestamp, champion, kills, deaths, assists, kda) VALUES (?,?,?,?,?,?,?)",
-        (match_id, timestamp, champ, k, d, a, kda)
-    )
-    conn.commit()
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO matches(match_id, timestamp, champion, kills, deaths, assists, kda)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (match_id) DO NOTHING
+        """, (match_id, timestamp, champ, k, d, a, kda))
+        conn.commit()
 
 # --- Processing ---
 def process_recent_matches(summoner_name, platform, continent, count=20):
@@ -97,14 +112,13 @@ def process_recent_matches(summoner_name, platform, continent, count=20):
     print(f"Found {len(match_ids)} match ids (requested {count})")
 
     # 3) open DB
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     init_db(conn)
 
     # 4) fetch each match and store KDA for this puuid
     for mid in match_ids:
         # skip if already stored
-        cur = conn.execute("SELECT 1 FROM matches WHERE match_id=?", (mid,)).fetchone()
-        if cur:
+        if match_exists(conn, mid):
             print(f"Skipping stored match {mid}")
             continue
 

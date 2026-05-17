@@ -1,16 +1,24 @@
 import os
 import requests
 import time
-import sqlite3
-from urllib.parse import quote_plus
+import psycopg2 as psql
+from dotenv import load_dotenv
+
+load_dotenv()
 
 API_KEY = os.environ.get("RIOT_API_KEY")
 if not API_KEY:
     raise SystemExit("Set RIOT_API_KEY environment variable")
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise SystemExit("Set DATABASE_URL environment variable")
+else:
+    print(DATABASE_URL)
+
 HEADERS = {"X-Riot-Token": API_KEY}
-PLATFORM_URL = "euw1.api.riotgames.com"
-REGION_URL = "europe.api.riotgames.com"
-DATABASE_FILE = "kda.db"
+PLATFORM_URL = "euw1.api.riotgames.com/"
+REGION_URL = "europe.api.riotgames.com/"
 
 # --- Helper: requests session with default headers ---
 session = requests.Session()
@@ -42,50 +50,57 @@ def safe_get(url, params=None, max_retries=5):
         raise RuntimeError(f"Request failed {resp.status_code}: {resp.text}")
 
 def init_db(connection):
-    connection.execute("""
-    CREATE TABLE IF NOT EXISTS matches(
-        match_id TEXT PRIMARY KEY,
-        timestamp INTEGER,
-        champion TEXT,
-        kills INTEGER,
-        deaths INTEGER,
-        assists INTEGER,
-        kda REAL
-    )""")
-    connection.commit()
+    with connection.cursor() as cur:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS matches(
+            match_id TEXT PRIMARY KEY,
+            timestamp BIGINT,
+            champion TEXT,
+            kills INTEGER,
+            deaths INTEGER,
+            assists INTEGER,
+            kda REAL
+        )""")
+        connection.commit()
 
-    # --- Riot endpoints (no wrapper) ---
-def get_summoner_by_name(platform, summoner_name):
-    name_enc = quote_plus(summoner_name)
-    url = f"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-name/{name_enc}"
-    return safe_get(url)
+def get_db_connection():
+    return psql.connect(DATABASE_URL)
 
-def get_match_ids_by_puuid(continent, puuid, count=20, start=0):
-    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
+def match_exists(connection, match_id):
+    with connection.cursor() as cur:
+        cur.execute("SELECT 1 FROM matches WHERE match_id = %s", (match_id,))
+        return cur.fetchone() is not None
+
+def store_match(connection, match_id, timestamp, champ, k, d, a, kda):
+    with connection.cursor() as cur:
+        cur.execute("""
+            INSERT INTO matches(match_id, timestamp, champion, kills, deaths, assists, kda)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (match_id) DO NOTHING
+        """, (match_id, timestamp, champ, k, d, a, kda))
+        connection.commit()
+
+def get_match_ids_by_puuid(puuid, count=20, start=0):
+    url = f"https://{REGION_URL}lol/match/v5/matches/by-puuid/{puuid}/ids"
     params = {"start": start, "count": count}
     return safe_get(url, params=params)
 
-def get_match_by_id(continent, match_id):
-    url = f"https://{continent}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+def get_match_by_id(match_id):
+    url = f"https://{REGION_URL}lol/match/v5/matches/{match_id}"
     return safe_get(url)
 
-def kda_to_database():
-    connection = sqlite3.connect(DATABASE_FILE)
+def kda_to_database(puuid):
+    connection = get_db_connection()
     init_db(connection)
 
-    params = {"start": start, "count": count}
-    return safe_get(url, params=params)
-
-    # 4) fetch each match and store KDA for this puuid
+    match_ids = get_match_ids_by_puuid(puuid, count=20)
+    
     for mid in match_ids:
-        # skip if already stored
-        cur = connection.execute("SELECT 1 FROM matches WHERE match_id=?", (mid,)).fetchone()
-        if cur:
+        if match_exists(connection, mid):
             print(f"Skipping stored match {mid}")
             continue
 
-        match = get_match_by_id(continent, mid)
-        # find participant by puuid
+        match = get_match_by_id(mid)
         participant = None
         for p in match["info"]["participants"]:
             if p["puuid"] == puuid:
@@ -110,13 +125,11 @@ if __name__ == "__main__":
     summoner_name = input("Input summoner name:\n")
     summoner_name = summoner_name.split("#")
     print(summoner_name)
-    summoner_dto = safe_get(f"https://{REGION_URL}/riot/account/v1/accounts/by-riot-id/{summoner_name[0]}/{summoner_name[1]}")
+    summoner_dto = safe_get(f"https://{REGION_URL}riot/account/v1/accounts/by-riot-id/{summoner_name[0]}/{summoner_name[1]}")
     puuid = summoner_dto["puuid"]
     print(puuid)
-    summoner_id = safe_get(f"https://{PLATFORM_URL}/lol/summoner/v4/summoners/by-puuid/{puuid}")
+    summoner_id = safe_get(f"https://{PLATFORM_URL}lol/summoner/v4/summoners/by-puuid/{puuid}")
     print(summoner_id["profileIconId"])
-    # current_match = safe_get(f"https://{PLATFORM_URL}/lol/spectator/v5/active-games/by-summoner/{puuid}")
-    # print(current_match) # get match details
-    match_ids = safe_get(f"https://{REGION_URL}/lol/match/v5/matches/by-puuid/{puuid}/ids", params={"startTime": 1778799600, "start": 0, "count": 20})
+    match_ids = safe_get(f"https://{REGION_URL}lol/match/v5/matches/by-puuid/{puuid}/ids", params={"startTime": 1778799600, "start": 0, "count": 20})
     print(match_ids)
-    kda_to_database()
+    kda_to_database(puuid)
