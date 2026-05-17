@@ -2,4 +2,4 @@
 Track KDA for punishment system
 
 Database PostgreSQL
-Riot Developer Portal
+Riot Developer Portal API
