@@ -71,7 +71,7 @@ def match_exists(connection, match_id):
         cur.execute("SELECT 1 FROM matches WHERE match_id = %s", (match_id,))
         return cur.fetchone() is not None
 
-def store_match(connection, match_id, timestamp, champ, k, d, a, kda):
+def store_match(connection, match_id, timestamp, champ, k, d, a, kda): #Add summoner name, maybe add table per match
     with connection.cursor() as cur:
         cur.execute("""
             INSERT INTO matches(match_id, timestamp, champion, kills, deaths, assists, kda)
@@ -114,6 +114,7 @@ def kda_to_database(puuid):
         d = participant.get("deaths", 0)
         a = participant.get("assists", 0)
         champ = participant.get("championName", "Unknown")
+        #summoner_name = participant.get("summonerName", "Unknown")
         timestamp = match["info"].get("gameStartTimestamp", 0)
         kda = (k + a) / max(1, d)
         store_match(connection, mid, timestamp, champ, k, d, a, kda)
