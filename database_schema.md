@@ -10,7 +10,7 @@ Stores unique summoner identities. This is the source of truth for player inform
 
 **Columns:**
 - `puuid` (TEXT, PRIMARY KEY) - Universally unique identifier for a summoner
-- `riot_id` (TEXT) - Summoner ID from Riot API
+- `riot_id_game_name` (TEXT) - Summoner ID from Riot API
 - `profile_icon_id` (INTEGER) - Profile icon identifier
 
 **Example:**
