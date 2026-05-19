@@ -264,8 +264,8 @@ def calculate_punishments(connection, match_id, puuid, participant_data, match_d
     demotion_runs = 0
     
     if rank_before and rank_after:
-        rank_before = {"Tier": rank_before[0].get("tier", "UNKNOWN"), "Rank": rank_before[0].get("rank", "")}
-        rank_after = {"Tier": rank_after[0].get("tier", "UNKNOWN"), "Rank": rank_after[0].get("rank", "")}
+        rank_before = {"Tier": rank_before[1].get("tier", "UNKNOWN"), "Rank": rank_before[1].get("rank", "")}
+        rank_after = {"Tier": rank_after[1].get("tier", "UNKNOWN"), "Rank": rank_after[1].get("rank", "")}
         if (rank_down(rank_before, rank_after)):
             demotion_runs = 1
     
@@ -345,7 +345,7 @@ def track_live_game(puuid, riot_id, poll_interval=1, check_interval=30, stop_eve
                         game_info = live_data.get("gameData", {})
                         game_id = game_info.get("gameId")
                         print(f"[LIVE] ✓ Game found! (Game ID: {game_id})")
-                        print(f"[LIVE] Pre-game rank: {rank_before}")
+                        print(f"[LIVE] Pre-game rank: {rank_before[1]}")
                     
                     last_check = current_time
                 
