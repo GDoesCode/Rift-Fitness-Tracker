@@ -4,6 +4,8 @@ import time
 import psycopg2 as psql
 import threading
 import urllib3
+import socket
+import json
 from enum import Enum
 from enum import IntEnum
 from datetime import datetime
@@ -42,6 +44,11 @@ class Rank(float, Enum):
     III = 0.2
     II = 0.3
     I = 0.4
+
+deaths_pushups_multiplier = 1
+cs_situps_multiplier = 1
+loss_planks_multiplier = 1
+demotion_runs_multiplier = 1
 
 #endregion
 
@@ -136,8 +143,7 @@ def init_db(connection):
             deaths_pushups INTEGER DEFAULT 0,
             cs_situps INTEGER DEFAULT 0,
             loss_planks INTEGER DEFAULT 0,
-            demotion_runs INTEGER DEFAULT 0,
-            total_punishment_count INTEGER DEFAULT 0
+            demotion_runs INTEGER DEFAULT 0
         )""")
         connection.commit()
 
@@ -180,6 +186,8 @@ def store_participant(connection, match_id, puuid, champion, kills, deaths, assi
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (match_id, puuid, champion, kills, deaths, assists, kda, team, position, lane, gold, damage, minions))
         connection.commit()
+
+#region RIOT API Calls
 
 def get_match_ids_by_puuid(puuid, count=20, start=0):
     url = f"https://{REGION_URL}lol/match/v5/matches/by-puuid/{puuid}/ids"
@@ -247,41 +255,14 @@ def store_live_snapshot(connection, game_id, puuid, kills, deaths, assists):
         """, (game_id, puuid, kills, deaths, assists))
         connection.commit()
 
+#endregion
+
 def rank_down(rank_before, rank_after):
     val1 =  (Tier[rank_before["Tier"]].value + Rank[rank_before["Rank"]].value)
     val2 = (Tier[rank_after["Tier"]].value + Rank[rank_after["Rank"]].value)
     return val1 > val2
 
-def calculate_punishments(connection, match_id, puuid, participant_data, match_duration, was_win, rank_before, rank_after):
-    #Calculate and store punishments for a finished game
-    deaths = participant_data.get("deaths", 0)
-    minions = participant_data.get("totalMinionsKilled", 0)
-    cs_per_min = minions / max(1, match_duration / 60)
-    
-    deaths_pushups = deaths * 5
-    cs_situps = 10 - cs_per_min
-    loss_planks = 1 if not was_win else 0
-    demotion_runs = 0
-    
-    if rank_before and rank_after:
-        rank_before = {"Tier": rank_before[1].get("tier", "UNKNOWN"), "Rank": rank_before[1].get("rank", "")}
-        rank_after = {"Tier": rank_after[1].get("tier", "UNKNOWN"), "Rank": rank_after[1].get("rank", "")}
-        if (rank_down(rank_before, rank_after)):
-            demotion_runs = 1
-    
-    with connection.cursor() as cur:
-        cur.execute("""
-            INSERT INTO punishments(match_id, puuid, deaths_pushups, cs_situps, loss_planks, demotion_runs, total_punishment_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (match_id, puuid, deaths_pushups, cs_situps, loss_planks, demotion_runs))
-        connection.commit()
-    
-    return {
-        "deaths_pushups": deaths_pushups,
-        "cs_situps": cs_situps,
-        "loss_planks": loss_planks,
-        "demotion_runs": demotion_runs
-    }
+#region Live Methods
 
 def track_live_game(puuid, riot_id, poll_interval=1, check_interval=30, stop_event=None):
     #Monitor active game using Live Client Data API for real-time K/D/A updates
@@ -302,48 +283,20 @@ def track_live_game(puuid, riot_id, poll_interval=1, check_interval=30, stop_eve
     last_kda = None
     
     try:
+        send_data_to_overlay("Waiting for active game...")
         while not stop_event.is_set():
             current_time = time.time()
             
             # Check for active game periodically
             if current_time - last_check >= check_interval:
-                try:
-                    # Try Live Client API first
-                    live_data = get_live_client_data()
-                    
-                    if not live_data:
-                        # Fallback to Spectator API
-                        spectator_data = get_active_game(puuid)
-                        if not spectator_data:
-                            if game_active:
-                                print("[LIVE] ✓ Game ended! Fetching final stats from Match API...")
-                                game_active = False
-                                
-                                # Get the most recent match ID for this summoner
-                                try:
-                                    match_ids = get_match_ids_by_puuid(puuid, count=1)
-                                    if match_ids:
-                                        latest_match_id = match_ids[0]
-                                        process_finished_game(connection, puuid, latest_match_id)
-                                        print("[LIVE] ✓ Final stats stored to database")
-                                except Exception as e:
-                                    print(f"[LIVE] Error fetching final match data: {e}")
-                                
-                                rank_before = None
-                                game_id = None
-                            else:
-                                print(f"[LIVE] No game yet (checking every {check_interval}s)...")
-                            
-                            last_check = current_time
-                            stop_event.wait(timeout=check_interval)
-                            continue
-                    
+                try:                    
                     # Game found via Live Client API
                     if not game_active:
                         game_active = True
                         rank_before = get_rank_by_summoner_id(puuid)
                         game_info = live_data.get("gameData", {})
                         game_id = game_info.get("gameId")
+                        send_data_to_overlay("Game Active!")
                         print(f"[LIVE] ✓ Game found! (Game ID: {game_id})")
                         print(f"[LIVE] Pre-game rank: {rank_before[1]}")
                     
@@ -391,11 +344,21 @@ def track_live_game(puuid, riot_id, poll_interval=1, check_interval=30, stop_eve
                     stop_event.wait(timeout=poll_interval)
                     continue
                 
-                # Extract K/D/A from Live Client API
+                # Extract K/D/A and CS/min from Live Client API
                 kills = your_data.get("scores", {}).get("kills", 0)
                 deaths = your_data.get("scores", {}).get("deaths", 0)
                 assists = your_data.get("scores", {}).get("assists", 0)
+                game_time = int(live_data.get("gameData", {}).get("gameTime", 0))
+                if game_time != 0:
+                    game_time_mins = (game_time + (60 // 2)) // 60
+                else:
+                    game_time_mins = 1
+                cs = your_data.get("scores", {}).get("creepScore", 0)
+                cs_per_min = (cs + (game_time_mins // 2)) // game_time_mins
                 current_kda = (kills, deaths, assists)
+                #Update overly constantly
+                data_to_fe = [deaths, cs_per_min]
+                send_data_to_overlay(data_to_fe)
                 
                 # Only update console and database if K/D/A changed
                 if current_kda != last_kda:
@@ -417,7 +380,14 @@ def track_live_game(puuid, riot_id, poll_interval=1, check_interval=30, stop_eve
 
 def process_finished_game(connection, puuid, match_id):
     #After game ends, store data in main tables and calculate punishments
+    with open("debug_log.txt", "a") as file:
+        file.write(f"[DEBUG] process_finished_game: match_id={match_id}, puuid={puuid}")
     try:
+        send_data_to_overlay("Game Ended!")
+        if not match_id:
+            print("[DEBUG] match_id is None or empty!")
+            return
+        
         match = get_match_by_id(match_id)
         match_info = match["info"]
         rank_after = get_rank_by_summoner_id(puuid)
@@ -432,6 +402,8 @@ def process_finished_game(connection, puuid, match_id):
         
         your_participant = None
         rank_before = get_rank_by_summoner_id(puuid)
+        with open("debug_log.txt", "a") as file:
+            file.write(f"[DEBUG] rank_before={rank_before}\n[DEBUG] rank_after={rank_after}")
         
         for participant in match_info["participants"]:
             p_puuid = participant.get("puuid", "")
@@ -464,10 +436,15 @@ def process_finished_game(connection, puuid, match_id):
                 connection, match_id, puuid, your_participant, duration, was_win, rank_before, rank_after
             )
             print(f"[PUNISHMENTS] Press-ups: {punishments['deaths_pushups']}, Sit-ups: {punishments['cs_situps']}, Planks: {punishments['loss_planks']}min, Runs: {punishments['demotion_runs']}km")
-            print(f"[PUNISHMENTS] Total: {punishments['total']} penalty points")
     
     except Exception as e:
+        import traceback
         print(f"[ERROR] Failed to process finished game: {e}")
+        traceback.print_exc()
+
+#endregion
+
+#region Database Methods
 
 def kda_to_database(puuid):
     connection = get_db_connection()
@@ -521,6 +498,68 @@ def kda_to_database(puuid):
 
     connection.close()
 
+def calculate_punishments(connection, match_id, puuid, participant_data, match_duration, was_win, rank_before, rank_after):
+    #Calculate and store punishments for a finished game
+    with open("debug_log.txt", "a") as file:
+        file.write(f"[DEBUG] calculate_punishments: rank_before type={type(rank_before)}\n[DEBUG] rank_after type={type(rank_after)}")
+    with open("debug_log.txt", "a") as file:
+        file.write(f"[DEBUG] rank_before value={rank_before}\n[DEBUG] rank_after value={rank_after}")
+
+    deaths = participant_data.get("deaths", 0)
+    minions = participant_data.get("totalMinionsKilled", 0)
+    cs_per_min = int(minions / max(1, match_duration / 60))
+    
+    deaths_pushups = deaths * deaths_pushups_multiplier
+    cs_situps = (10 - cs_per_min) * cs_situps_multiplier
+    loss_planks = (1 * loss_planks_multiplier) if not was_win else 0
+    
+    if rank_before and rank_after:
+        # rank_before/rank_after are lists from API. Solo/duo queue is at index [1]
+        rb_entry = rank_before[1] if isinstance(rank_before, list) and len(rank_before) > 1 else None
+        ra_entry = rank_after[1] if isinstance(rank_after, list) and len(rank_after) > 1 else None
+        
+        with open("debug_log.txt", "a") as file:
+            file.write(f"[DEBUG] rb_entry={rb_entry}\n[DEBUG] ra_entry={ra_entry}")
+        
+        if rb_entry and ra_entry:
+            rank_before_dict = {"Tier": rb_entry.get("tier", "UNKNOWN"), "Rank": rb_entry.get("rank", "")}
+            rank_after_dict = {"Tier": ra_entry.get("tier", "UNKNOWN"), "Rank": ra_entry.get("rank", "")}
+            if (rank_down(rank_before_dict, rank_after_dict)):
+                demotion_runs = 1 * demotion_runs_multiplier
+    
+    with connection.cursor() as cur:
+        cur.execute("""
+            INSERT INTO punishments(match_id, puuid, deaths_pushups, cs_situps, loss_planks, demotion_runs)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (match_id, puuid, deaths_pushups, cs_situps, loss_planks, demotion_runs))
+        connection.commit()
+    
+    return {
+        "deaths_pushups": deaths_pushups,
+        "cs_situps": cs_situps,
+        "loss_planks": loss_planks,
+        "demotion_runs": demotion_runs
+    }
+
+#endregion
+
+#region Connect to Front End
+
+def send_data_to_overlay(data):
+    """Establishes a split-second socket connection to drop off text data"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('127.0.0.1', 5555))
+        s.sendall(json.dumps(data).encode('utf-8'))
+        s.close()
+    except ConnectionRefusedError:
+        # Triggers smoothly if overlay.py isn't open yet
+        pass
+
+#endregion
+
+#region Main Class
+
 if __name__ == "__main__":
     riot_id = input("Input summoner name:\n").lower()
     summoner_name = riot_id.split("#")
@@ -529,9 +568,6 @@ if __name__ == "__main__":
     puuid = summoner_dto["puuid"]
     
     summoner_id = get_summoner_by_puuid(puuid)
-    
-    print(f"Summoner: {summoner_name[0]}#{summoner_name[1]}")
-    print(f"PUUID: {puuid}")
 
     mode = input("\nChoose mode:\n1. Track past 20 games\n2. Track live game\n3. Both (live in background)\n> ")
     
@@ -546,3 +582,5 @@ if __name__ == "__main__":
         kda_to_database(puuid)
     else:
         print("Invalid mode")
+
+#endregion
