@@ -507,7 +507,7 @@ def calculate_punishments(connection, match_id, puuid, participant_data, match_d
 
     deaths = participant_data.get("deaths", 0)
     minions = participant_data.get("totalMinionsKilled", 0)
-    cs_per_min = int(minions / max(1, match_duration / 60))
+    cs_per_min = int(minions // max(1, match_duration / 60))
     
     deaths_pushups = deaths * deaths_pushups_multiplier
     cs_situps = (10 - cs_per_min) * cs_situps_multiplier
@@ -546,7 +546,7 @@ def calculate_punishments(connection, match_id, puuid, participant_data, match_d
 #region Connect to Front End
 
 def send_data_to_overlay(data):
-    """Establishes a split-second socket connection to drop off text data"""
+    #Establishes a split-second socket connection to drop off text data
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('127.0.0.1', 5555))
