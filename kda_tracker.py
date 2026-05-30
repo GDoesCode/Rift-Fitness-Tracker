@@ -14,7 +14,7 @@ from datetime import datetime
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 #region Global Variables
-
+ 
 API_KEY = os.environ.get("RIOT_API_KEY")
 if not API_KEY:
     raise SystemExit("Set RIOT_API_KEY environment variable")
@@ -508,6 +508,7 @@ def calculate_punishments(connection, match_id, puuid, participant_data, match_d
     deaths = participant_data.get("deaths", 0)
     minions = participant_data.get("totalMinionsKilled", 0)
     cs_per_min = int(minions // max(1, match_duration / 60))
+    demotion_runs = 0
     
     deaths_pushups = deaths * deaths_pushups_multiplier
     cs_situps = (10 - cs_per_min) * cs_situps_multiplier
@@ -525,7 +526,7 @@ def calculate_punishments(connection, match_id, puuid, participant_data, match_d
             rank_before_dict = {"Tier": rb_entry.get("tier", "UNKNOWN"), "Rank": rb_entry.get("rank", "")}
             rank_after_dict = {"Tier": ra_entry.get("tier", "UNKNOWN"), "Rank": ra_entry.get("rank", "")}
             if (rank_down(rank_before_dict, rank_after_dict)):
-                demotion_runs = 1 * demotion_runs_multiplier
+                demotion_runs = 1 * demotion_runs_multiplier    
     
     with connection.cursor() as cur:
         cur.execute("""
