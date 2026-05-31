@@ -31,28 +31,31 @@ class LiveTrackerWorker:
         game_id = None
         last_kda = None
 
-        self.send_data_to_overlay("Searching for game...")
+        self.send_data_to_overlay({"status": "SCANNING..."})
 
         while not self.stop_event.is_set():
-            # Adaptive throttle: Default wait time when sitting on client home screen
-            sleep_duration = 15 
-
+            sleep_duration = 5 # default heartbeat fallback
+            
+            # 1. Check the live game engine first
             live_data = self.api.get_live_client_data()
 
-            # State Switch: Entering a match
-            if live_data and not game_active:
-                game_active = True
-                rank_before = self.api.get_rank(self.puuid)
-                game_id = live_data.get("gameData", {}).get("gameId")
-                self.send_data_to_overlay("Game Active!")
-                print(f"\n[WORKER] 🎮 Match Found! (ID: {game_id})")
-                sleep_duration = 1
-
-            # State Execution: Actively updating within an ongoing game
-            elif live_data and game_active:
-                sleep_duration = 1 # Quick monitoring cadence while inside the game
+            # --- CASE A: Inside an active match ---
+            if live_data:
+                sleep_duration = 1 # Speed up polling when live in game
                 
-                # Fetch target player statistics
+                if not game_active:
+                    game_active = True
+                    rank_before = self.api.get_rank(self.puuid)
+                    game_id = live_data.get("gameData", {}).get("gameId")
+                    
+                    game_time = live_data.get("gameData", {}).get("gameTime", 0)
+                    if game_time == 0:
+                        self.send_data_to_overlay({"status": "LOADING..."})
+                    else:
+                        self.send_data_to_overlay({"status": "LIVE"})
+                    print(f"\n[WORKER] 🎮 Match Found! (ID: {game_id})")
+
+                # Track live KDA stats
                 your_data = None
                 for player in live_data.get("allPlayers", []):
                     if player.get("riotId", "").lower() == self.riot_id.lower():
@@ -62,13 +65,15 @@ class LiveTrackerWorker:
                 if your_data:
                     scores = your_data.get("scores", {})
                     k, d, a = scores.get("kills", 0), scores.get("deaths", 0), scores.get("assists", 0)
-                    
-                    # CS Calculations
                     game_time_sec = int(live_data.get("gameData", {}).get("gameTime", 0))
                     game_mins = max(1, (game_time_sec + 30) // 60)
                     cs_per_min = (scores.get("creepScore", 0) + (game_mins // 2)) // game_mins
                     
-                    self.send_data_to_overlay([d, cs_per_min])
+                    self.send_data_to_overlay({
+                        "status": "LIVE",
+                        "deaths": d,
+                        "cs_min": cs_per_min
+                    })
 
                     current_kda = (k, d, a)
                     if current_kda != last_kda:
@@ -76,27 +81,46 @@ class LiveTrackerWorker:
                         self.db.store_live_snapshot(game_id, self.puuid, k, d, a)
                         last_kda = current_kda
 
-            # State Switch: Exiting a finished match
-            elif not live_data and game_active:
-                print("\n[WORKER] 🏁 Game concluded. Compiling statistics...")
-                self.send_data_to_overlay("Game Ended!")
-                game_active = False
-                last_kda = None
-                
-                # Processing endgame entries
-                time.sleep(5) # Brief buffer giving Riot's system server room to compile logs
-                try:
-                    m_ids = self.api.get_match_ids(self.puuid, count=1)
-                    if m_ids:
-                        self.process_finished_game(m_ids[0], rank_before)
-                except Exception as e:
-                    print(f"[ERROR] Failed post-game storage run: {e}")
-                
-                rank_before = None
-                game_id = None
-                sleep_duration = 10
+            # --- CASE B: Not inside a match (Lobby, Post-Game, or Closed) ---
+            else:
+                # Fallback to check what the client window is doing
+                lcu_phase = self.api.get_lcu_gameflow_phase()
 
-            # Safe OS thread release mechanism
+                if game_active:
+                    # The game just closed out, transition out of match execution state
+                    print("\n[WORKER] 🏁 Game closed. Transitioning to processing...")
+                    self.send_data_to_overlay({"status": "PROCESSING..."})
+                    game_active = False
+                    last_kda = None
+                    
+                    time.sleep(5) # buffer window for server syncing
+                    try:
+                        m_ids = self.api.get_match_ids(self.puuid, count=1)
+                        if m_ids:
+                            self.process_finished_game(m_ids[0], rank_before)
+                    except Exception as e:
+                        print(f"[ERROR] Post-game routine failure: {e}")
+                    
+                    rank_before = None
+                    game_id = None
+
+                # Evaluate LCU specific positions to send clean updates to your Tkinter file
+                if lcu_phase in ["Lobby", "Matchmaking", "ChampSelect"]:
+                    self.send_data_to_overlay({"status": "IN LOBBY"})
+                    sleep_duration = 4  # moderate check rate during menus
+                    
+                elif lcu_phase in ["WaitingForStats", "EndOfGame"]:
+                    self.send_data_to_overlay({"status": "POST GAME"})
+                    sleep_duration = 5
+                    
+                elif lcu_phase == "CLOSED":
+                    self.send_data_to_overlay({"status": "CLIENT CLOSED"})
+                    sleep_duration = 12 # check very slowly if league is shut down
+                    
+                else:
+                    self.send_data_to_overlay({"status": "SCANNING..."})
+                    sleep_duration = 8
+
             self.stop_event.wait(timeout=sleep_duration)
 
     def process_finished_game(self, match_id, rank_before):

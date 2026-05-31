@@ -3,11 +3,11 @@ import socket
 import ctypes
 import json
 
-class SingleThreadedOverlay:
+class RiotTrackerOverlay:
     def __init__(self, root):
         self.root = root
         
-        # 1. Window Setup (Switch to "purple" and uncomment overrideredirect once confirmed working!)
+        # 1. Window Setup (Using transparent purple chroma key)
         self.root.overrideredirect(True) 
         self.root.geometry("300x90+0+0")
         self.root.attributes("-topmost", True)
@@ -17,7 +17,7 @@ class SingleThreadedOverlay:
         # 2. UI Elements
         self.label = tk.Label(
             self.root, 
-            text="Waiting for tracker...", 
+            text="STARTING...", 
             font=("Consolas", 16, "bold"), 
             fg="#00FF00", 
             bg="purple",
@@ -31,7 +31,7 @@ class SingleThreadedOverlay:
         self.server.bind(('127.0.0.1', 5555))
         self.server.listen(1)
         
-        # THIS IS THE KEY: Tells Python not to wait around if no data is ready
+        # Tells Python not to wait around if no data is ready
         self.server.setblocking(False) 
         
         # 4. Inject Windows Click-Through Styles
@@ -42,7 +42,7 @@ class SingleThreadedOverlay:
         self.poll_network_data()
 
     def make_window_click_through(self):
-        #Injects Windows OS styles to make the window completely click-through
+        # Injects Windows OS styles to make the window completely click-through
         hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
         GWL_EXSTYLE = -20
         WS_EX_TRANSPARENT = 0x00000020
@@ -56,10 +56,8 @@ class SingleThreadedOverlay:
         )
 
     def poll_network_data(self):
-        #Checks the socket for incoming data from kda_tracker.py every 100ms
+        # Checks the socket for incoming data from the tracker worker every 100ms
         try:
-            # Try to accept a connection. Because of setblocking(False), if 
-            # kda_tracker hasn't sent anything, it immediately raises a BlockingIOError.
             conn, addr = self.server.accept()
             raw_text = conn.recv(1024).decode('utf-8')
             conn.close()
@@ -67,24 +65,44 @@ class SingleThreadedOverlay:
             if raw_text:
                 actual_data = json.loads(raw_text)
 
-            if isinstance(actual_data, str):
-                self.label.config(text=actual_data)
-            elif isinstance(actual_data, list):
-                self.label.config(text=f"Push ups: {actual_data[0] * 5}\nSit ups: {10 - actual_data[1]}")
+                # Handle the new structured dictionary payloads safely
+                if isinstance(actual_data, dict):
+                    status = actual_data.get("status", "UNKNOWN")
+                    
+                    if status == "LIVE":
+                        deaths = actual_data.get("deaths", 0)
+                        cs_min = actual_data.get("cs_min", 0)
+                        
+                        # Calculated workout requirements (keeping your multiplier logic)
+                        pushups = deaths * 1
+                        situps = max(0, 10 - cs_min) * 1
+                        
+                        # Dynamically change text colors based on state performance vibes
+                        self.label.config(
+                            text=f"🔴 Deaths: {deaths} ({pushups} PU)\n🟢 CS/Min: {cs_min} ({situps} SU)",
+                            fg="#FF3333" if deaths > 3 else "#00FF00"
+                        )
+                    else:
+                        # Display menu/client tracking phase statuses cleanly (SCANNING..., LOADING..., PROCESSING...)
+                        # Muted yellow color scheme during phase shifts
+                        self.label.config(text=status, fg="#FFD700")
+                
+                # Fallback handler for raw strings/legacy data blocks
+                elif isinstance(actual_data, str):
+                    self.label.config(text=actual_data, fg="#00FF00")
             
         except (BlockingIOError, ConnectionResetError):
-            # This is normal behavior! It means no new data was sent in this 100ms window.
+            # Normal behavior: no new packet received in this 100ms tick window
             pass
         except Exception as e:
-            # If a real structural error happens, it will print here instead of exiting silently
-            print(f"Network error: {e}")
+            print(f"Network error parsing data packet: {e}")
         
         # Check the socket again in 100 milliseconds
         self.root.after(100, self.poll_network_data)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = SingleThreadedOverlay(root)
+    app = RiotTrackerOverlay(root)
     
     try:
         root.mainloop()

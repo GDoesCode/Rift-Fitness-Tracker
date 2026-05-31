@@ -1,6 +1,8 @@
-import requests
+import os
 import time
+import base64
 import urllib3
+import requests
 from config import API_KEY, REGION_URL, PLATFORM_URL
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -34,6 +36,42 @@ class RiotAPIClient:
                 if attempt >= max_retries:
                     raise e
                 time.sleep(1 + attempt * 2)
+
+    def get_lcu_gameflow_phase(self):
+        # Reads the local League lockfile to authenticate and get the current 
+        #client phase (e.g., Lobby, Matchmaking, ChampSelect, InProgress, EndOfGame).
+
+        # Default path for a standard Windows installation
+        lockfile_path = r"C:\Riot Games\League of Legends\lockfile"
+        
+        if not os.path.exists(lockfile_path):
+            return "CLOSED"  # Client isn't even open
+            
+        try:
+            with open(lockfile_path, "r") as f:
+                lockfile_content = f.read()
+                
+            # Lockfile format: processName:pid:port:password:protocol
+            parts = lockfile_content.split(":")
+            port = parts[2]
+            password = parts[3]
+            
+            # Encode credentials for basic auth
+            auth_token = base64.b64encode(f"riot:{password}".encode('utf-8')).decode('utf-8')
+            headers = {
+                "Authorization": f"Basic {auth_token}",
+                "Accept": "application/json"
+            }
+            
+            url = f"https://127.0.0.1:{port}/lol-gameflow/v1/gameflow-phase"
+            
+            # Request phase from LCU (verify=False because client uses self-signed SSL)
+            resp = requests.get(url, headers=headers, timeout=0.5, verify=False)
+            if resp.status_code == 200:
+                return resp.json()  # Returns strings like "Lobby", "Matchmaking", "ChampSelect", "InProgress", "EndOfGame"
+            return "UNKNOWN"
+        except Exception:
+            return "UNKNOWN"
 
     def get_puuid(self, game_name, tag_line):
         url = f"https://{REGION_URL}/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
