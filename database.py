@@ -56,7 +56,7 @@ class DatabaseManager:
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS punishments(
                     punishment_id SERIAL PRIMARY KEY,
-                    match_id TEXT NOT NULL REFERENCES matches(match_id),
+                    match_id TEXT NOT NULL REFERENCES matches(match_id) UNIQUE, 
                     puuid TEXT NOT NULL REFERENCES summoners(puuid),
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     deaths_pushups INTEGER DEFAULT 0,

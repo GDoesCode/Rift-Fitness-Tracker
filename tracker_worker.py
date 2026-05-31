@@ -26,7 +26,7 @@ class LiveTrackerWorker:
         self.db.init_db()
         print(f"\n[WORKER] 🚀 Adaptive background tracker active for {self.riot_id}.")
         
-        game_active = False
+        game_active = None
         rank_before = None
         game_id = None
         last_kda = None
@@ -36,14 +36,14 @@ class LiveTrackerWorker:
         while not self.stop_event.is_set():
             sleep_duration = 5 # default heartbeat fallback
             
-            # 1. Check the live game engine first
+            # Check the live game engine first
             live_data = self.api.get_live_client_data()
 
             # --- CASE A: Inside an active match ---
             if live_data:
                 sleep_duration = 1 # Speed up polling when live in game
                 
-                if not game_active:
+                if game_active in [None, False]:
                     game_active = True
                     rank_before = self.api.get_rank(self.puuid)
                     game_id = live_data.get("gameData", {}).get("gameId")
@@ -86,14 +86,15 @@ class LiveTrackerWorker:
                 # Fallback to check what the client window is doing
                 lcu_phase = self.api.get_lcu_gameflow_phase()
 
+                # The game just closed out, transition out of match execution state
                 if game_active:
-                    # The game just closed out, transition out of match execution state
+                    game_active = False # Flip immediately to prevent double execution
+                    
                     print("\n[WORKER] 🏁 Game closed. Transitioning to processing...")
                     self.send_data_to_overlay({"status": "PROCESSING..."})
-                    game_active = False
                     last_kda = None
                     
-                    time.sleep(5) # buffer window for server syncing
+                    time.sleep(5) 
                     try:
                         m_ids = self.api.get_match_ids(self.puuid, count=1)
                         if m_ids:
@@ -103,6 +104,8 @@ class LiveTrackerWorker:
                     
                     rank_before = None
                     game_id = None
+                elif game_active is None:
+                    game_active = False # Initial state set after first check
 
                 # Evaluate LCU specific positions to send clean updates to your Tkinter file
                 if lcu_phase in ["Lobby", "Matchmaking", "ChampSelect"]:
