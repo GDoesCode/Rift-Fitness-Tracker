@@ -1,3 +1,4 @@
+import time
 import threading
 from config import API_KEY
 from riot_api import RiotAPIClient
