@@ -1,13 +1,13 @@
 import os
 from enum import Enum, IntEnum
 
-API_KEY = os.environ.get("RIOT_API_KEY")
-DATABASE_URL = os.environ.get("DATABASE_URL")
+API_KEY = os.environ.get("RIFT_FITNESS_TRACKER_API_KEY")
+DATABASE_URL = os.environ.get("RIFT_FITNESS_TRACKER_DATABASE_URL")
 
 if not API_KEY:
-    raise SystemExit("Set RIOT_API_KEY environment variable")
+    raise SystemExit("Set RIFT_FITNESS_TRACKER_API_KEY environment variable")
 if not DATABASE_URL:
-    raise SystemExit("Set DATABASE_URL environment variable")
+    raise SystemExit("Set RIFT_FITNESS_TRACKER_DATABASE_URL environment variable")
 
 PLATFORM_URL = "euw1.api.riotgames.com"
 REGION_URL = "europe.api.riotgames.com"
