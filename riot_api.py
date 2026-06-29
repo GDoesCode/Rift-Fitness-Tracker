@@ -3,21 +3,37 @@ import time
 import base64
 import urllib3
 import requests
-from config import API_KEY, REGION_URL, PLATFORM_URL
+# REMOVED: API_KEY is no longer imported here!
+from config import REGION_URL, PLATFORM_URL 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Point this to your Linux Home Server's IP or network name
+PROXY_BASE_URL = "http://homeserver:3000/api/riot"
 
 class RiotAPIClient:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"X-Riot-Token": API_KEY, "Accept": "application/json"})
+        # REMOVED: X-Riot-Token header is gone from the client.
+        self.session.headers.update({"Accept": "application/json"})
 
-    def _safe_get(self, url, params=None, max_retries=5):
+    def _safe_get(self, riot_url, params=None, max_retries=5):
         attempt = 0
         while True:
             attempt += 1
             try:
-                resp = self.session.get(url, params=params, timeout=5)
+                # Instead of hitting Riot directly, we hit your proxy 
+                # and pass the intended Riot URL as a query parameter.
+                proxy_params = {"url": riot_url}
+                if params:
+                    # Append any extra query parameters (like count=20) onto the target URL
+                    # so the proxy forwards them correctly.
+                    encoded_params = requests.models.PreparedRequest()
+                    encoded_params.prepare_url(riot_url, params)
+                    proxy_params["url"] = encoded_params.url
+
+                resp = self.session.get(PROXY_BASE_URL, params=proxy_params, timeout=7)
+                
                 if resp.status_code == 200:
                     return resp.json()
                 if resp.status_code == 429:
@@ -31,44 +47,32 @@ class RiotAPIClient:
                 if 500 <= resp.status_code < 600 and attempt < max_retries:
                     time.sleep(1 + attempt * 2)
                     continue
-                raise RuntimeError(f"API Error {resp.status_code}: {resp.text}")
+                raise RuntimeError(f"Proxy/API Error {resp.status_code}: {resp.text}")
             except requests.exceptions.RequestException as e:
                 if attempt >= max_retries:
                     raise e
                 time.sleep(1 + attempt * 2)
 
     def get_lcu_gameflow_phase(self):
-        # Reads the local League lockfile to authenticate and get the current 
-        #client phase (e.g., Lobby, Matchmaking, ChampSelect, InProgress, EndOfGame).
-
-        # Default path for a standard Windows installation
-        lockfile_path = r"C:\Riot Games\League of Legends\lockfile"
-        
+        # (KEPT EXACTLY THE SAME - Still talks locally to 127.0.0.1)
+        lockfile_path = r"C:\\Riot Games\\League of Legends\\lockfile"
         if not os.path.exists(lockfile_path):
-            return "CLOSED"  # Client isn't even open
-            
+            return "CLOSED"
         try:
             with open(lockfile_path, "r") as f:
                 lockfile_content = f.read()
-                
-            # Lockfile format: processName:pid:port:password:protocol
             parts = lockfile_content.split(":")
             port = parts[2]
             password = parts[3]
-            
-            # Encode credentials for basic auth
             auth_token = base64.b64encode(f"riot:{password}".encode('utf-8')).decode('utf-8')
             headers = {
                 "Authorization": f"Basic {auth_token}",
                 "Accept": "application/json"
             }
-            
             url = f"https://127.0.0.1:{port}/lol-gameflow/v1/gameflow-phase"
-            
-            # Request phase from LCU (verify=False because client uses self-signed SSL)
             resp = requests.get(url, headers=headers, timeout=0.5, verify=False)
             if resp.status_code == 200:
-                return resp.json()  # Returns strings like "Lobby", "Matchmaking", "ChampSelect", "InProgress", "EndOfGame"
+                return resp.json()
             return "UNKNOWN"
         except Exception:
             return "UNKNOWN"
@@ -97,7 +101,7 @@ class RiotAPIClient:
             return None
 
     def get_live_client_data(self):
-        """Pings local live game host endpoint."""
+        # (KEPT EXACTLY THE SAME - Still talks locally to 127.0.0.1)
         try:
             resp = requests.get("https://127.0.0.1:2999/liveclientdata/allgamedata", timeout=0.8, verify=False)
             return resp.json() if resp.status_code == 200 else None

@@ -1,11 +1,8 @@
 import os
 from enum import Enum, IntEnum
 
-API_KEY = os.environ.get("RIFT_FITNESS_TRACKER_API_KEY")
 DATABASE_URL = os.environ.get("RIFT_FITNESS_TRACKER_DATABASE_URL")
 
-if not API_KEY:
-    raise SystemExit("Set RIFT_FITNESS_TRACKER_API_KEY environment variable")
 if not DATABASE_URL:
     raise SystemExit("Set RIFT_FITNESS_TRACKER_DATABASE_URL environment variable")
 
