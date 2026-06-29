@@ -3,18 +3,15 @@ import time
 import base64
 import urllib3
 import requests
-# REMOVED: API_KEY is no longer imported here!
 from config import REGION_URL, PLATFORM_URL 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Point this to your Linux Home Server's IP or network name
 PROXY_BASE_URL = "http://homeserver:3000/api/riot"
 
 class RiotAPIClient:
     def __init__(self):
         self.session = requests.Session()
-        # REMOVED: X-Riot-Token header is gone from the client.
         self.session.headers.update({"Accept": "application/json"})
 
     def _safe_get(self, riot_url, params=None, max_retries=5):
@@ -22,12 +19,8 @@ class RiotAPIClient:
         while True:
             attempt += 1
             try:
-                # Instead of hitting Riot directly, we hit your proxy 
-                # and pass the intended Riot URL as a query parameter.
                 proxy_params = {"url": riot_url}
                 if params:
-                    # Append any extra query parameters (like count=20) onto the target URL
-                    # so the proxy forwards them correctly.
                     encoded_params = requests.models.PreparedRequest()
                     encoded_params.prepare_url(riot_url, params)
                     proxy_params["url"] = encoded_params.url
@@ -54,7 +47,6 @@ class RiotAPIClient:
                 time.sleep(1 + attempt * 2)
 
     def get_lcu_gameflow_phase(self):
-        # (KEPT EXACTLY THE SAME - Still talks locally to 127.0.0.1)
         lockfile_path = r"C:\\Riot Games\\League of Legends\\lockfile"
         if not os.path.exists(lockfile_path):
             return "CLOSED"
@@ -101,7 +93,6 @@ class RiotAPIClient:
             return None
 
     def get_live_client_data(self):
-        # (KEPT EXACTLY THE SAME - Still talks locally to 127.0.0.1)
         try:
             resp = requests.get("https://127.0.0.1:2999/liveclientdata/allgamedata", timeout=0.8, verify=False)
             return resp.json() if resp.status_code == 200 else None
