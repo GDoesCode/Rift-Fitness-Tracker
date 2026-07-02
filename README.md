@@ -1,15 +1,15 @@
 # Rift-Fitness-Tracker
 Track KDA for punishment system
 
-Database PostgreSQL
-Riot Developer Portal API
+- Database PostgreSQL
+- Riot Developer Portal API
 
 # Rift Fitness Tracker - New Features
 
 ## Overview
 Enhanced KDA tracker with live game monitoring and punishment system.
 
-## New Tables
+## Tables
 
 ### `live_games`
 Stores real-time K/D/A snapshots during active games (1 second polling).
@@ -72,14 +72,6 @@ All stored in `punishments` table with timestamp (includes date).
    - Main thread fetches past 20 games
    - Both complete independently
 
-## Database Changes
-
-### Updated `participants` table
-- Added `minions_killed` column to track CS for sit-up calculation
-
-### Updated `summoners` table
-- Column renamed to `riot_id_game_name` (was `riot_id`)
-
 ### Timestamp Format
 All new tables use PostgreSQL `TIMESTAMP` type, displaying dates like:
 `2026-05-19 14:30:45` (instead of epoch milliseconds)
@@ -90,7 +82,7 @@ All new tables use PostgreSQL `TIMESTAMP` type, displaying dates like:
 python kda_tracker.py
 ```
 
-Enter summoner name (e.g., `JustG#01G`), then choose mode:
+Enter summoner name (e.g., `summonername#taghere`), then choose mode:
 
 ```
 Choose mode:
@@ -115,36 +107,4 @@ Choose mode:
 **Punishments:**
 ```
 [PUNISHMENTS] Press-ups: 2, Sit-ups: 0, Planks: 0min, Runs: 0km
-[PUNISHMENTS] Total: 2 penalty points
-```
-
-## Queries
-
-### View today's punishments
-```sql
-SELECT timestamp, deaths_pushups, cs_situps, loss_planks, demotion_runs, total_punishment_count
-FROM punishments
-WHERE puuid = 'YOUR_PUUID'
-AND DATE(timestamp) = CURRENT_DATE
-ORDER BY timestamp DESC;
-```
-
-### View live game snapshots
-```sql
-SELECT timestamp, kills, deaths, assists
-FROM live_games
-WHERE game_id = 'GAME_ID'
-ORDER BY timestamp ASC;
-```
-
-### Calculate total weekly punishments
-```sql
-SELECT 
-    SUM(deaths_pushups) as total_pushups,
-    SUM(cs_situps) as total_situps,
-    SUM(loss_planks) as total_planks,
-    SUM(demotion_runs) as total_km_runs
-FROM punishments
-WHERE puuid = 'YOUR_PUUID'
-AND DATE(timestamp) >= CURRENT_DATE - INTERVAL '7 days';
 ```
