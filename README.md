@@ -2,9 +2,9 @@
 Track KDA for punishment system
 
 - Database PostgreSQL
-- Riot Developer Portal API
+-  Riot Developer Portal API
 
-# Rift Fitness Tracker - New Features
+# Rift Fitness Tracker
 
 ## Overview
 Enhanced KDA tracker with live game monitoring and punishment system.
