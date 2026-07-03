@@ -2,15 +2,16 @@ import time
 import socket
 import json
 import threading
+from config import DEATHS_PUSHUPS_MULTIPLIER, CS_SITUPS_MULTIPLIER, LOSS_PLANKS_MULTIPLIER, DEMOTION_RUNS_MULTIPLIER
 from riot_api import RiotAPIClient
-from database import DatabaseManager
+from database import RiftFitnessTrackerDatabase
 
 class LiveTrackerWorker:
-    def __init__(self, puuid, riot_id, api_client: RiotAPIClient, db_manager: DatabaseManager):
+    def __init__(self, puuid, riot_id, api_client: RiotAPIClient, db: RiftFitnessTrackerDatabase):
         self.puuid = puuid
         self.riot_id = riot_id
         self.api = api_client
-        self.db = db_manager
+        self.db = db
         self.stop_event = threading.Event()
 
     def send_data_to_overlay(self, data):
@@ -22,8 +23,56 @@ class LiveTrackerWorker:
         except Exception:
             pass # Overlay window overlay.py isn't actively running
 
+    def historical_sync(self, puuid):
+        print("\n[HISTORICAL] Synced requested. Pulling down past 20 games...")
+        match_ids = self.api.get_match_ids(puuid, count=20)
+        
+        for m_id in match_ids:
+            if self.db.match_exists(m_id):
+                print(f"Skipping match {m_id} (Already recorded)")
+                continue
+                
+            print(f"Processing old match record: {m_id}")
+            match = self.api.get_match(m_id)
+            info = match["info"]
+            
+            participants_list = []
+            for p in info["participants"]:
+                p_puuid = p.get("puuid")
+                k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
+                
+                participant_data = {
+                    "puuid": p_puuid,
+                    "riotIdGameName": p.get("riotIdGameName"),
+                    "profileIcon": p.get("profileIcon"),
+                    "championName": p.get("championName"),
+                    "kills": k,
+                    "deaths": d,
+                    "assists": a,
+                    "kda": (k + a) / max(1, d),
+                    "team": "RED" if p.get("teamId") == 200 else "BLUE",
+                    "individualPosition": p.get("individualPosition"),
+                    "lane": p.get("lane"),
+                    "goldEarned": p.get("goldEarned"),
+                    "totalDamageDealt": p.get("totalDamageDealt"),
+                    "totalMinionsKilled": p.get("totalMinionsKilled")
+                }
+                participants_list.append(participant_data)
+
+            match_data_payload = {
+                "match_id": m_id,
+                "gameStartTimestamp": info.get("gameStartTimestamp"),
+                "gameMode": info.get("gameMode"),
+                "gameDuration": info.get("gameDuration"),
+                "mapId": info.get("mapId"),
+                "queueId": info.get("queueId"),
+                "participants": participants_list
+            }
+
+            self.db.store_match(match_data_payload)
+        print("[HISTORICAL] Sync Complete.")
+
     def run_tracking_loop(self):
-        self.db.init_db()
         print(f"\n[WORKER] 🚀 Adaptive background tracker active for {self.riot_id}.")
         
         game_active = None
@@ -131,28 +180,61 @@ class LiveTrackerWorker:
         info = match["info"]
         rank_after = self.api.get_rank(self.puuid)
 
-        with self.db.get_connection() as conn:
-            self.db.store_match(conn, match_id, info.get("gameStartTimestamp"), info.get("gameMode"), info.get("gameDuration"), info.get("mapId"), info.get("queueId"))
-            
-            your_part = None
-            for p in info["participants"]:
-                p_puuid = p.get("puuid")
-                self.db.upsert_summoner(conn, p_puuid, p.get("riotIdGameName"), p.get("profileIcon"))
-                
-                k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
-                kda = (k + a) / max(1, d)
-                team = "RED" if p.get("teamId") == 200 else "BLUE"
-                
-                self.db.store_participant(
-                    conn, match_id, p_puuid, p.get("championName"), k, d, a, kda, team,
-                    p.get("individualPosition"), p.get("lane"), p.get("goldEarned"), p.get("totalDamageDealt"), p.get("totalMinionsKilled")
-                )
-                if p_puuid == self.puuid:
-                    your_part = p
+        # match_data_payload = {
+        #         "match_id": m_id,
+        #         "gameStartTimestamp": info.get("gameStartTimestamp"),
+        #         "gameMode": info.get("gameMode"),
+        #         "gameDuration": info.get("gameDuration"),
+        #         "mapId": info.get("mapId"),
+        #         "queueId": info.get("queueId"),
+        #         "participants": participants_list
+        #     }
 
-            if your_part:
-                punishments = self.db.calculate_and_store_punishments(
-                    conn, match_id, self.puuid, your_part, info.get("gameDuration"), your_part.get("win"), rank_before, rank_after
-                )
-                print(f"\n[WORKOUT WORKBOOK REQUIRED]:\n -> 🏃 Push-ups: {punishments['deaths_pushups']}\n -> 🏋️ Sit-ups: {punishments['cs_situps']}\n -> 🪵 Planks: {punishments['loss_planks']} min\n -> 👟 Penalty Runs: {punishments['demotion_runs']} km")
-            conn.commit()
+        self.db.store_match(match_id, info.get("gameStartTimestamp"), info.get("gameMode"), info.get("gameDuration"), info.get("mapId"), info.get("queueId"))
+        #self.db.store_match(match_data_payload)
+        
+        your_part = None
+        for p in info["participants"]:
+            p_puuid = p.get("puuid")
+            self.db.upsert_summoner(p_puuid, p.get("riotIdGameName"), p.get("profileIcon"))
+            
+            k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
+            kda = (k + a) / max(1, d)
+            team = "RED" if p.get("teamId") == 200 else "BLUE"
+            
+            self.db.store_participant(
+                match_id, p_puuid, p.get("championName"), k, d, a, kda, team,
+                p.get("individualPosition"), p.get("lane"), p.get("goldEarned"), p.get("totalDamageDealt"), p.get("totalMinionsKilled")
+            )
+            if p_puuid == self.puuid:
+                your_part = p
+
+        if your_part:
+            punishments = self.calculate_punishments(
+                match_id, self.puuid, your_part, info.get("gameDuration"), your_part.get("win"), rank_before, rank_after
+            )
+            print(f"\n[WORKOUT WORKBOOK REQUIRED]:\n -> 🏃 Push-ups: {punishments['deaths_pushups']}\n -> 🏋️ Sit-ups: {punishments['cs_situps']}\n -> 🪵 Planks: {punishments['loss_planks']} min\n -> 👟 Penalty Runs: {punishments['demotion_runs']} km")
+
+    def calculate_punishments(self, match_id, puuid, participant_data, match_duration, was_win, rank_before, rank_after):
+        deaths = participant_data.get("deaths", 0)
+        minions = participant_data.get("totalMinionsKilled", 0)
+        cs_per_min = int(minions // max(1, match_duration / 60))
+        
+        deaths_pushups = deaths * DEATHS_PUSHUPS_MULTIPLIER
+        cs_situps = max(0, (10 - cs_per_min)) * CS_SITUPS_MULTIPLIER
+        loss_planks = LOSS_PLANKS_MULTIPLIER if not was_win else 0
+        demotion_runs = 0
+        
+        if rank_before and rank_after:
+            rb_entry = rank_before[1] if isinstance(rank_before, list) and len(rank_before) > 1 else None
+            ra_entry = rank_after[1] if isinstance(rank_after, list) and len(rank_after) > 1 else None
+            
+            if rb_entry and ra_entry:
+                rb_dict = {"Tier": rb_entry.get("tier", "UNKNOWN"), "Rank": rb_entry.get("rank", "")}
+                ra_dict = {"Tier": ra_entry.get("tier", "UNKNOWN"), "Rank": ra_entry.get("rank", "")}
+                if self._rank_down(rb_dict, ra_dict):
+                    demotion_runs = 1 * DEMOTION_RUNS_MULTIPLIER
+        
+        self.db.store_punishment(match_id, puuid, deaths_pushups, cs_situps, loss_planks, demotion_runs)
+
+        return [deaths_pushups, cs_situps, loss_planks, demotion_runs]

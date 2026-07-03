@@ -1,10 +1,4 @@
-import os
 from enum import Enum, IntEnum
-from dotenv import load_dotenv
-
-load_dotenv()
-
-DATABASE_URL = os.getenv("RIFT_FITNESS_TRACKER_DATABASE_URL")
 
 PLATFORM_URL = "euw1.api.riotgames.com"
 REGION_URL = "europe.api.riotgames.com"
