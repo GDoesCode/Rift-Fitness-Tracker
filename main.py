@@ -52,13 +52,25 @@ def main():
         worker = LiveTrackerWorker(puuid, riot_id, api_client, db_api)
 
         def track_historical():
-            worker.historical_sync(puuid)
+            try:
+                print("[SYSTEM] Running historical sync... (Ctrl+C to return to menu)")
+                worker.historical_sync(puuid)
+            except KeyboardInterrupt:
+                print("\n[SYSTEM] Historical sync interrupted. Returning to menu...")
 
         def track_live():
-            worker.run_tracking_loop()
+            try:
+                print("[SYSTEM] Starting live tracking... (Ctrl+C to return to menu)")
+                worker.run_tracking_loop()
+            except KeyboardInterrupt:
+                print("\n[SYSTEM] Live tracking stopped. Returning to menu...")
 
         def track_both():
-            run_background_tracking(worker, puuid)
+            try:
+                print("[SYSTEM] Starting both... (Ctrl+C to return to menu)")
+                run_background_tracking(worker, puuid)
+            except KeyboardInterrupt:
+                print("\n[SYSTEM] Background tracking stopped. Returning to menu...")
 
         def exit_application():
             print("\n[SYSTEM] Exiting application. Goodbye!")

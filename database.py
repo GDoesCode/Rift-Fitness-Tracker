@@ -100,8 +100,9 @@ class RiftFitnessTrackerDatabase:
             "profile_icon": p.get("profileIcon")
         }
     
-    def create_rank_payload(self, rank):
+    def create_rank_payload(self, match_id, rank):
         return {
+            "match_id": match_id,
             "puuid": rank.get("puuid"),
             "queue_type": rank.get("queueType"),
             "tier": rank.get("tier"),

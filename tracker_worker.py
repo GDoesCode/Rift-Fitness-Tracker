@@ -184,12 +184,13 @@ class LiveTrackerWorker:
     def process_participants(self, info):
         for p in info["participants"]:
             self.db.upsert_summoner(self.db.create_summoner_payload(p))
-            self.db.store_participant(self.db.create_participant_payload(info.get("platformId") + "_" + str(info.get("gameId")), p))
+            match_id = info.get("platformId") + "_" + str(info.get("gameId"))
+            self.db.store_participant(self.db.create_participant_payload(match_id, p))
         
             rank_before = self.db.get_rank_at_time(p.get("puuid"), info.get("gameStartTimestamp"))
             if rank_before.get("error") == "sql: no rows in result set":
                 for rank_after in self.api.get_rank(p.get("puuid")):
-                    self.db.store_rank(self.db.create_rank_payload(rank_after))
+                    self.db.store_rank(self.db.create_rank_payload(match_id, rank_after))
             if p.get("puuid") == self.puuid:
                 self.rank_before = rank_before
                 return p
