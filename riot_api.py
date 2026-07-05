@@ -7,7 +7,7 @@ from config import REGION_URL, PLATFORM_URL
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-PROXY_BASE_URL = "http://homeserver:3000/api/riot"
+PROXY_BASE_URL = "https://anyway-rejoicing-collar.ngrok-free.dev/api/riot"
 
 class RiotAPIClient:
     def __init__(self):
