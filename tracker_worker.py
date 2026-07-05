@@ -2,7 +2,7 @@ import time
 import socket
 import json
 import threading
-from config import DEATHS_PUSHUPS_MULTIPLIER, CS_SITUPS_MULTIPLIER, LOSS_PLANKS_MULTIPLIER, DEMOTION_RUNS_MULTIPLIER
+from config import DEATH_PUSHUPS_MULTIPLIER, CS_SITUPS_MULTIPLIER, LOSS_PLANKS_MULTIPLIER, DEMOTION_RUNS_MULTIPLIER, Tier, Rank
 from riot_api import RiotAPIClient
 from database import RiftFitnessTrackerDatabase
 
@@ -10,6 +10,7 @@ class LiveTrackerWorker:
     def __init__(self, puuid, riot_id, api_client: RiotAPIClient, db: RiftFitnessTrackerDatabase):
         self.puuid = puuid
         self.riot_id = riot_id
+        self.rank_before = None
         self.api = api_client
         self.db = db
         self.stop_event = threading.Event()
@@ -26,57 +27,23 @@ class LiveTrackerWorker:
     def historical_sync(self, puuid):
         print("\n[HISTORICAL] Synced requested. Pulling down past 20 games...")
         match_ids = self.api.get_match_ids(puuid, count=20)
-        
+
         for m_id in match_ids:
             if self.db.match_exists(m_id):
                 print(f"Skipping match {m_id} (Already recorded)")
                 continue
                 
             print(f"Processing old match record: {m_id}")
-            match = self.api.get_match(m_id)
-            info = match["info"]
-            
-            participants_list = []
-            for p in info["participants"]:
-                p_puuid = p.get("puuid")
-                k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
-                
-                participant_data = {
-                    "puuid": p_puuid,
-                    "riotIdGameName": p.get("riotIdGameName"),
-                    "profileIcon": p.get("profileIcon"),
-                    "championName": p.get("championName"),
-                    "kills": k,
-                    "deaths": d,
-                    "assists": a,
-                    "kda": (k + a) / max(1, d),
-                    "team": "RED" if p.get("teamId") == 200 else "BLUE",
-                    "individualPosition": p.get("individualPosition"),
-                    "lane": p.get("lane"),
-                    "goldEarned": p.get("goldEarned"),
-                    "totalDamageDealt": p.get("totalDamageDealt"),
-                    "totalMinionsKilled": p.get("totalMinionsKilled")
-                }
-                participants_list.append(participant_data)
-
-            match_data_payload = {
-                "match_id": m_id,
-                "gameStartTimestamp": info.get("gameStartTimestamp"),
-                "gameMode": info.get("gameMode"),
-                "gameDuration": info.get("gameDuration"),
-                "mapId": info.get("mapId"),
-                "queueId": info.get("queueId"),
-                "participants": participants_list
-            }
-
-            self.db.store_match(match_data_payload)
+            match_info = self.api.get_match(m_id).get("info")
+            timestamp = (match_info.get("gameStartTimestamp") // 1000) + match_info.get("gameDuration") + 120 # additional 2 mins for loading time
+            rank_after = self.db.get_rank_at_time(puuid, timestamp)
+            self.process_finished_game(m_id, rank_after)
         print("[HISTORICAL] Sync Complete.")
 
     def run_tracking_loop(self):
         print(f"\n[WORKER] 🚀 Adaptive background tracker active for {self.riot_id}.")
         
         game_active = None
-        rank_before = None
         game_id = None
         last_kda = None
 
@@ -94,7 +61,7 @@ class LiveTrackerWorker:
                 
                 if game_active in [None, False]:
                     game_active = True
-                    rank_before = self.api.get_rank(self.puuid)
+                    self.rank_before = self.api.get_rank(self.puuid)
                     game_id = live_data.get("gameData", {}).get("gameId")
                     
                     game_time = live_data.get("gameData", {}).get("gameTime", 0)
@@ -127,7 +94,7 @@ class LiveTrackerWorker:
                     current_kda = (k, d, a)
                     if current_kda != last_kda:
                         print(f"\r[LIVE STATS] KDA: {k}/{d}/{a} | CS/M: {cs_per_min}", end="", flush=True)
-                        self.db.store_live_snapshot(game_id, self.puuid, k, d, a)
+                        self.db.store_live_snapshot(self.db.create_live_snapshot(self.puuid, scores))
                         last_kda = current_kda
 
             # --- CASE B: Not inside a match (Lobby, Post-Game, or Closed) ---
@@ -147,11 +114,11 @@ class LiveTrackerWorker:
                     try:
                         m_ids = self.api.get_match_ids(self.puuid, count=1)
                         if m_ids:
-                            self.process_finished_game(m_ids[0], rank_before)
+                            self.process_finished_game(m_ids[0])
                     except Exception as e:
                         print(f"[ERROR] Post-game routine failure: {e}")
                     
-                    rank_before = None
+                    self.rank_before = None
                     game_id = None
                 elif game_active is None:
                     game_active = False # Initial state set after first check
@@ -175,52 +142,26 @@ class LiveTrackerWorker:
 
             self.stop_event.wait(timeout=sleep_duration)
 
-    def process_finished_game(self, match_id, rank_before):
+    def process_finished_game(self, match_id, rank_after=None):
         match = self.api.get_match(match_id)
         info = match["info"]
-        rank_after = self.api.get_rank(self.puuid)
-
-        # match_data_payload = {
-        #         "match_id": m_id,
-        #         "gameStartTimestamp": info.get("gameStartTimestamp"),
-        #         "gameMode": info.get("gameMode"),
-        #         "gameDuration": info.get("gameDuration"),
-        #         "mapId": info.get("mapId"),
-        #         "queueId": info.get("queueId"),
-        #         "participants": participants_list
-        #     }
-
-        self.db.store_match(match_id, info.get("gameStartTimestamp"), info.get("gameMode"), info.get("gameDuration"), info.get("mapId"), info.get("queueId"))
-        #self.db.store_match(match_data_payload)
-        
+        if rank_after is None or rank_after.get("error") == "sql: no rows in result set":
+            rank_after = self.api.get_rank(self.puuid)
         your_part = None
-        for p in info["participants"]:
-            p_puuid = p.get("puuid")
-            self.db.upsert_summoner(p_puuid, p.get("riotIdGameName"), p.get("profileIcon"))
-            
-            k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
-            kda = (k + a) / max(1, d)
-            team = "RED" if p.get("teamId") == 200 else "BLUE"
-            
-            self.db.store_participant(
-                match_id, p_puuid, p.get("championName"), k, d, a, kda, team,
-                p.get("individualPosition"), p.get("lane"), p.get("goldEarned"), p.get("totalDamageDealt"), p.get("totalMinionsKilled")
-            )
-            if p_puuid == self.puuid:
-                your_part = p
 
+        self.db.store_match(self.db.create_match_payload(match_id, info))
+
+        your_part = self.process_participants(info)
         if your_part:
-            punishments = self.calculate_punishments(
-                match_id, self.puuid, your_part, info.get("gameDuration"), your_part.get("win"), rank_before, rank_after
-            )
-            print(f"\n[WORKOUT WORKBOOK REQUIRED]:\n -> 🏃 Push-ups: {punishments['deaths_pushups']}\n -> 🏋️ Sit-ups: {punishments['cs_situps']}\n -> 🪵 Planks: {punishments['loss_planks']} min\n -> 👟 Penalty Runs: {punishments['demotion_runs']} km")
+            punishments = self.calculate_punishments(match_id, self.puuid, your_part, info.get("gameDuration"), your_part.get("win"), self.rank_before, rank_after)
+            print(f"\n[WORKOUT WORKBOOK REQUIRED]:\n -> 🏃 Push-ups: {punishments['death_pushups']}\n -> 🏋️ Sit-ups: {punishments['cs_situps']}\n -> 🪵 Planks: {punishments['loss_planks']} min\n -> 👟 Penalty Runs: {punishments['demotion_runs']} km")
 
     def calculate_punishments(self, match_id, puuid, participant_data, match_duration, was_win, rank_before, rank_after):
         deaths = participant_data.get("deaths", 0)
-        minions = participant_data.get("totalMinionsKilled", 0)
+        minions = participant_data.get("totalMinionsKilled", 0) + participant_data.get("neutralMinionsKilled", 0)
         cs_per_min = int(minions // max(1, match_duration / 60))
         
-        deaths_pushups = deaths * DEATHS_PUSHUPS_MULTIPLIER
+        death_pushups = deaths * DEATH_PUSHUPS_MULTIPLIER
         cs_situps = max(0, (10 - cs_per_min)) * CS_SITUPS_MULTIPLIER
         loss_planks = LOSS_PLANKS_MULTIPLIER if not was_win else 0
         demotion_runs = 0
@@ -232,9 +173,23 @@ class LiveTrackerWorker:
             if rb_entry and ra_entry:
                 rb_dict = {"Tier": rb_entry.get("tier", "UNKNOWN"), "Rank": rb_entry.get("rank", "")}
                 ra_dict = {"Tier": ra_entry.get("tier", "UNKNOWN"), "Rank": ra_entry.get("rank", "")}
-                if self._rank_down(rb_dict, ra_dict):
+                result = (Rank[rb_dict["Rank"]].value + Tier[rb_dict["Tier"]].value) < (Rank[ra_dict["Rank"]].value + Tier[ra_dict["Tier"]].value)
+                if result:
                     demotion_runs = 1 * DEMOTION_RUNS_MULTIPLIER
-        
-        self.db.store_punishment(match_id, puuid, deaths_pushups, cs_situps, loss_planks, demotion_runs)
+        punishments = self.db.create_punishment_payload(match_id, puuid, death_pushups, cs_situps, loss_planks, demotion_runs)
+        self.db.store_punishment(punishments)
 
-        return [deaths_pushups, cs_situps, loss_planks, demotion_runs]
+        return punishments
+    
+    def process_participants(self, info):
+        for p in info["participants"]:
+            self.db.upsert_summoner(self.db.create_summoner_payload(p))
+            self.db.store_participant(self.db.create_participant_payload(info.get("platformId") + "_" + str(info.get("gameId")), p))
+        
+            rank_before = self.db.get_rank_at_time(p.get("puuid"), info.get("gameStartTimestamp"))
+            if rank_before.get("error") == "sql: no rows in result set":
+                for rank_after in self.api.get_rank(p.get("puuid")):
+                    self.db.store_rank(self.db.create_rank_payload(rank_after))
+            if p.get("puuid") == self.puuid:
+                self.rank_before = rank_before
+                return p
