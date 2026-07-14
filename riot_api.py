@@ -7,10 +7,9 @@ from config import REGION_URL, PLATFORM_URL
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-PROXY_BASE_URL = "https://anyway-rejoicing-collar.ngrok-free.dev/api/riot"
-
 class RiotAPIClient:
     def __init__(self):
+        self.server_url = "http://7.tcp.eu.ngrok.io:15816/api/riot"
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
@@ -25,7 +24,7 @@ class RiotAPIClient:
                     encoded_params.prepare_url(riot_url, params)
                     proxy_params["url"] = encoded_params.url
 
-                resp = self.session.get(PROXY_BASE_URL, params=proxy_params, timeout=7)
+                resp = self.session.get(self.server_url, params=proxy_params, timeout=7)
                 
                 if resp.status_code == 200:
                     return resp.json()

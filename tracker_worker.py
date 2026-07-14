@@ -2,7 +2,7 @@ import time
 import socket
 import json
 import threading
-from config import DEATH_PUSHUPS_MULTIPLIER, CS_SITUPS_MULTIPLIER, LOSS_PLANKS_MULTIPLIER, DEMOTION_RUNS_MULTIPLIER, Tier, Rank
+from config import DEATH_PUNISHMENT_MULTIPLIER, CS_PUNISHMENT_MULTIPLIER, LOSS_PUNISHMENT_MULTIPLIER, DEMOTION_PUNISHMENT_MULTIPLIER, Tier, Rank
 from riot_api import RiotAPIClient
 from database import RiftFitnessTrackerDatabase
 
@@ -161,9 +161,9 @@ class LiveTrackerWorker:
         minions = participant_data.get("totalMinionsKilled", 0) + participant_data.get("neutralMinionsKilled", 0)
         cs_per_min = int(minions // max(1, match_duration / 60))
         
-        death_pushups = deaths * DEATH_PUSHUPS_MULTIPLIER
-        cs_situps = max(0, (10 - cs_per_min)) * CS_SITUPS_MULTIPLIER
-        loss_planks = LOSS_PLANKS_MULTIPLIER if not was_win else 0
+        death_pushups = deaths * DEATH_PUNISHMENT_MULTIPLIER
+        cs_situps = max(0, (10 - cs_per_min)) * CS_PUNISHMENT_MULTIPLIER
+        loss_planks = LOSS_PUNISHMENT_MULTIPLIER if not was_win else 0
         demotion_runs = 0
         
         if rank_before and rank_after:
@@ -175,7 +175,7 @@ class LiveTrackerWorker:
                 ra_dict = {"Tier": ra_entry.get("tier", "UNKNOWN"), "Rank": ra_entry.get("rank", "")}
                 result = (Rank[rb_dict["Rank"]].value + Tier[rb_dict["Tier"]].value) < (Rank[ra_dict["Rank"]].value + Tier[ra_dict["Tier"]].value)
                 if result:
-                    demotion_runs = 1 * DEMOTION_RUNS_MULTIPLIER
+                    demotion_runs = 1 * DEMOTION_PUNISHMENT_MULTIPLIER
         punishments = self.db.create_punishment_payload(match_id, puuid, death_pushups, cs_situps, loss_planks, demotion_runs)
         self.db.store_punishment(punishments)
 
