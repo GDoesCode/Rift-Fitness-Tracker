@@ -7,9 +7,11 @@ from riot_api import RiotAPIClient
 from database import RiftFitnessTrackerDatabase
 
 class LiveTrackerWorker:
-    def __init__(self, puuid, riot_id, api_client: RiotAPIClient, db: RiftFitnessTrackerDatabase):
+    def __init__(self, puuid, game_name, tag_line, api_client: RiotAPIClient, db: RiftFitnessTrackerDatabase):
         self.puuid = puuid
-        self.riot_id = riot_id
+        self.game_name = game_name
+        self.tag_line = tag_line
+        self.riot_id = game_name + "#" + tag_line
         self.rank_before = None
         self.api = api_client
         self.db = db
@@ -159,7 +161,7 @@ class LiveTrackerWorker:
     def calculate_punishments(self, match_id, puuid, participant_data, match_duration, was_win, rank_before, rank_after):
         deaths = participant_data.get("deaths", 0)
         minions = participant_data.get("totalMinionsKilled", 0) + participant_data.get("neutralMinionsKilled", 0)
-        cs_per_min = int(minions // max(1, match_duration / 60))
+        cs_per_min = int((minions + max(1, match_duration / 60)) // max(1, match_duration / 60)) #(scores.get("creepScore", 0) + (game_mins // 2)) // game_mins
         
         death_pushups = deaths * DEATH_PUNISHMENT_MULTIPLIER
         cs_situps = max(0, (10 - cs_per_min)) * CS_PUNISHMENT_MULTIPLIER

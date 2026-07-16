@@ -3,29 +3,38 @@ import threading
 from database import RiftFitnessTrackerDatabase
 from riot_api import RiotAPIClient
 from tracker_worker import LiveTrackerWorker
+from config import load_user_data, save_riot_id
 
-
-def get_authenticated_summoner(api_client):
+def authenticate_summoner(api_client):
     while True:
-        riot_id = input("Input summoner name (Name#TAG):\n").strip()
-        
-        if "#" not in riot_id:
-            print("[ERROR] Invalid Riot ID formatting. Remember the '#' symbol. Try again.\n")
-            continue
-            
-        name_split = riot_id.split("#")
-        
-        # Ensure there is exactly one '#' separating a name and a tag
-        if len(name_split) == 2 and name_split[0] and name_split[1]:
-            try:
-                print("[SYSTEM] Reaching out to Riot servers for authentication...")
-                puuid = api_client.get_puuid(name_split[0], name_split[1])
-                print("[SYSTEM] Successfully authenticated.")
-                return puuid, riot_id
-            except Exception as e:
-                print(f"[ERROR] An error occurred while fetching PUUID: {e}")
+        user_data = load_user_data()
+        name = user_data.get("gameName")
+    
+        if name:
+            # If we have the name, greet them and bypass the prompt
+            print(f"Welcome back, {name}!")
+            return user_data.get("puuid"), f"{user_data.get("gameName")}#{user_data.get("tagLine")}"
         else:
-            print("[ERROR] Invalid format. Ensure you have text before and after the '#'. (e.g., HideOnBush#KR1)\n")
+            # If we don't have the name, ask for it and save it
+            riot_id = input("Input summoner name (Name#TAG):\n").strip()
+        
+            if "#" not in riot_id:
+                print("[ERROR] Invalid Riot ID formatting. Remember the '#' symbol. Try again.\n")
+                continue
+                
+            name_split = riot_id.split("#")
+        
+            # Ensure there is exactly one '#' separating a name and a tag
+            if len(name_split) == 2 and name_split[0] and name_split[1]:
+                try:
+                    print("[SYSTEM] Reaching out to Riot servers for authentication...")
+                    puuid = api_client.get_puuid(name_split[0], name_split[1])
+                    print("[SYSTEM] Successfully authenticated.")
+                    save_riot_id(puuid, api_client)
+                except Exception as e:
+                    print(f"[ERROR] An error occurred while fetching PUUID: {e}")
+            else:
+                print("[ERROR] Invalid format. Ensure you have text before and after the '#'. (e.g., HideOnBush#KR1)\n")
 
 
 def run_background_tracking(worker, puuid):
@@ -48,8 +57,9 @@ def main():
     db_api = RiftFitnessTrackerDatabase()
 
     try:
-        puuid, riot_id = get_authenticated_summoner(api_client)
-        worker = LiveTrackerWorker(puuid, riot_id, api_client, db_api)
+        authenticate_summoner(api_client)
+        game_name, tag_line, puuid = load_user_data().values()
+        worker = LiveTrackerWorker(puuid, game_name, tag_line, api_client, db_api)
 
         def track_historical():
             try:

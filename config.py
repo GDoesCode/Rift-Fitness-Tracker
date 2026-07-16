@@ -1,4 +1,8 @@
+import os
+import json
 from enum import Enum
+
+CONFIG_FILE = "user_config.json"
 
 PLATFORM_URL = "euw1.api.riotgames.com"
 REGION_URL = "europe.api.riotgames.com"
@@ -32,3 +36,34 @@ class Rank(float, Enum):
     III = 0.2
     II = 0.3
     I = 0.4
+
+def load_user_data():
+    """Checks if the file exists and loads the user data."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as file:
+            try:
+                return json.load(file)
+            except json.JSONDecodeError:
+                # In case the file gets corrupted or is empty
+                return {}
+    return {}
+
+def update_user_data(data):
+    """Loads existing data, merges the new updates, and saves it all."""
+    # 1. Load the current data from the file
+    current_data = load_user_data()
+    
+    # 2. Merge the new updates into the current data
+    current_data.update(data)
+    
+    # 3. Save the merged dictionary back to the file
+    with open(CONFIG_FILE, "w") as file:
+        json.dump(current_data, file, indent=4)
+
+def save_riot_id(puuid, api_client):
+    """Saves the users riot id locally"""
+    resp = api_client.get_riot_id(puuid)
+    user_data = {k: resp.get(k) for k in ["gameName", "tagLine", "puuid"]}
+    update_user_data(user_data)
+    print("[SYSTEM] Successfully save user data.")
+

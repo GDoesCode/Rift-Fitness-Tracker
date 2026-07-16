@@ -71,6 +71,10 @@ class RiotAPIClient:
     def get_puuid(self, game_name, tag_line):
         url = f"https://{REGION_URL}/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
         return self._safe_get(url)["puuid"]
+    
+    def get_riot_id(self, puuid):
+        url = f"https://{REGION_URL}/riot/account/v1/accounts/by-puuid/{puuid}"
+        return self._safe_get(url)
 
     def get_summoner_id_data(self, puuid):
         url = f"https://{PLATFORM_URL}/lol/summoner/v4/summoners/by-puuid/{puuid}"
