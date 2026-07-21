@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 a = Analysis(
-    ['main.py'],             # PyInstaller starts at main.py (which automatically includes overlay.py)
-    pathex=[],
+    ['src/rift_fitness_tracker/main.py'],     # 👈 Updated relative path
+    pathex=['src/rift_fitness_tracker'],        # 👈 Allows PyInstaller to locate config.py, overlay.py, etc.
     binaries=[],
     datas=[],
     hiddenimports=[],
@@ -21,14 +21,14 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='RiftFitnessTracker',  # Single executable name
+    name='RiftFitnessTracker',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,               # Set to False if you want to hide the black command window
+    console=True,  # Set to False if you want to hide the black command window
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
