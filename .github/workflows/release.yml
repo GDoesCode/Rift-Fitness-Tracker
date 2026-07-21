@@ -3,15 +3,15 @@ name: Desktop App Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # Triggers when pushing tags like v1.0.0
+      - 'v*.*.*'
 
 jobs:
   build-and-release:
     name: Build Windows Executable
-    runs-on: windows-latest  # Runs on a Windows VM so PyInstaller produces a Windows .exe
+    runs-on: windows-latest
 
     permissions:
-      contents: write  # Grants permission to upload files to GitHub Releases
+      contents: write
 
     steps:
       - name: Checkout Source Code
@@ -20,27 +20,32 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.11'
 
-      - name: Install Dependencies & PyInstaller
+      - name: Install PyInstaller and Dependencies
+        shell: powershell
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
           pip install pyinstaller
+          if (Test-Path requirements.txt) {
+              pip install -r requirements.txt
+          }
 
       - name: Build Executable with PyInstaller
         run: |
-          # Replace 'src/main.py' with your main application entry script
-          pyinstaller .\rift_fitness_tracker.spec
+          pyinstaller --noconfirm rift_fitness_tracker.spec
 
-      - name: Zip the Output Directory
+      - name: Zip Executable Output
         shell: powershell
         run: |
-          Compress-Archive -Path "dist" -DestinationPath "dist/Rift-Fitness-Tracker-Windows.zip"
+          # Zips the generated .exe from dist/ into the root folder
+          Compress-Archive -Path "dist/RiftFitnessTracker.exe" -DestinationPath "RiftFitnessTracker-Windows.zip" -Force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/MyApp-Windows.zip
+          files: |
+            RiftFitnessTracker-Windows.zip
+            dist/RiftFitnessTracker.exe
+          fail_on_unmatched_files: true
           generate_release_notes: true
-          prerelease: true
