@@ -9,7 +9,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class RiotAPIClient:
     def __init__(self):
-        self.server_url = "http://7.tcp.eu.ngrok.io:15816/api/riot"
+        self.server_url = "http://0.tcp.eu.ngrok.io:28672/api/riot" # Port 3000
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
