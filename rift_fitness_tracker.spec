@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 a = Analysis(
-    ['src/rift_fitness_tracker/main.py'],     # 👈 Updated relative path
-    pathex=['src/rift_fitness_tracker'],        # 👈 Allows PyInstaller to locate config.py, overlay.py, etc.
+    ['src/rift_fitness_tracker/main.py'],
+    pathex=['src/rift_fitness_tracker'],
     binaries=[],
     datas=[],
     hiddenimports=[],
