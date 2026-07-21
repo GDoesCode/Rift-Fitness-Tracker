@@ -100,11 +100,20 @@ class RiotTrackerOverlay:
         # Check the socket again in 100 milliseconds
         self.root.after(100, self.poll_network_data)
 
-if __name__ == "__main__":
+def start_overlay():
     root = tk.Tk()
     app = RiotTrackerOverlay(root)
+    
+    def on_closing():
+        app.cleanup()
+        root.destroy()
+        
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     
     try:
         root.mainloop()
     except KeyboardInterrupt:
-        print("\nOverlay closed cleanly.")
+        app.cleanup()
+
+if __name__ == "__main__":
+    start_overlay()

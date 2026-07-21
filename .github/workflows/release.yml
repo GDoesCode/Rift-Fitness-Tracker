@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install Dependencies & PyInstaller
         run: |
@@ -31,12 +31,12 @@ jobs:
       - name: Build Executable with PyInstaller
         run: |
           # Replace 'src/main.py' with your main application entry script
-          pyinstaller --noconfirm --onedir --windowed --name "MyApp" src/main.py
+          pyinstaller .\rift_fitness_tracker.spec
 
       - name: Zip the Output Directory
         shell: powershell
         run: |
-          Compress-Archive -Path "dist/MyApp" -DestinationPath "dist/MyApp-Windows.zip"
+          Compress-Archive -Path "dist" -DestinationPath "dist/Rift-Fitness-Tracker-Windows.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -1,5 +1,7 @@
 import time
+import overlay
 import threading
+import multiprocessing
 from database import RiftFitnessTrackerDatabase
 from riot_api import RiotAPIClient
 from tracker_worker import LiveTrackerWorker
@@ -111,5 +113,14 @@ def main():
         print("\n\n[SYSTEM] Execution interrupted by user. Exiting gracefully... Goodbye!")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    multiprocessing.freeze_support()
+
+    # Launch overlay in a background process
+    overlay_process = multiprocessing.Process(
+        target=overlay.start_overlay, 
+        daemon=True
+    )
+    overlay_process.start()
+
     main()
