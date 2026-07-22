@@ -110,6 +110,7 @@ def main():
     except (KeyboardInterrupt, EOFError):
         # Catches a global Ctrl+C at the menu level
         print("\n\n[SYSTEM] Execution interrupted by user. Exiting gracefully... Goodbye!")
+        worker.stop_overlay_process()
 
 if __name__ == '__main__':
     main()

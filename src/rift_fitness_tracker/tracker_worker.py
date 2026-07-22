@@ -20,12 +20,7 @@ class LiveTrackerWorker:
         self.stop_event = threading.Event()
         multiprocessing.freeze_support()
 
-        # Launch overlay in a background process
-        self.overlay_process = multiprocessing.Process(
-            target=overlay.start_overlay,  
-            daemon=True
-        )
-        self.overlay_process.start()
+        self.start_overlay_process()
 
     def send_data_to_overlay(self, data):
         try:
@@ -211,9 +206,8 @@ class LiveTrackerWorker:
 
 #region Process Management Helpers
     def start_overlay_process(self):
-        p = multiprocessing.Process(target=overlay.start_overlay, daemon=True)
-        p.start()
-        return p
+        self.overlay_process = multiprocessing.Process(target=overlay.start_overlay, daemon=True)
+        self.overlay_process.start()
 
     def ensure_overlay_running(self):
         """Checks if overlay process is alive; restarts it if closed/crashed."""
