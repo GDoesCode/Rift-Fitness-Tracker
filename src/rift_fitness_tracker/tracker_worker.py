@@ -54,7 +54,7 @@ class LiveTrackerWorker:
         game_id = None
         last_kda = None
 
-        self.overlay_process = self.ensure_overlay_running(self.overlay_process)
+        self.overlay_process = self.ensure_overlay_running()
 
         self.send_data_to_overlay({"status": "SCANNING..."})
 
