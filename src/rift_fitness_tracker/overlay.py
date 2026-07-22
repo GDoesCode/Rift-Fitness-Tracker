@@ -6,6 +6,9 @@ import json
 class RiotTrackerOverlay:
     def __init__(self, root):
         self.root = root
+
+        # Keep hidden during setup to not focus on it instead of cmd window
+        self.root.withdraw()
         
         # Window Setup (Using transparent purple chroma key)
         self.root.overrideredirect(True) 
@@ -34,26 +37,36 @@ class RiotTrackerOverlay:
         # Tells Python not to wait around if no data is ready
         self.server.setblocking(False) 
         
-        # Inject Windows Click-Through Styles
-        self.root.update()
+        # Initialize layout handles WITHOUT drawing or activating the window
+        self.root.update_idletasks()
+
+        # Apply Windows styles & reveal window non-actively
         self.make_window_click_through()
-        
+
         # Start the single-threaded network polling loop
         self.poll_network_data()
 
     def make_window_click_through(self):
-        # Injects Windows OS styles to make the window completely click-through
-        hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
-        GWL_EXSTYLE = -20
+        # GA_ROOT (2) gets the true top-level HWND even with overrideredirect
+        GA_ROOT = 2
+        hwnd = ctypes.windll.user32.GetAncestor(self.root.winfo_id(), GA_ROOT)
+        if not hwnd:
+            hwnd = self.root.winfo_id()
+
+        GWL_EXSTYLE       = -20
         WS_EX_TRANSPARENT = 0x00000020
-        WS_EX_LAYERED = 0x00080000
-        
+        WS_EX_LAYERED     = 0x00080000
+        WS_EX_NOACTIVATE  = 0x08000000  # Do not steal focus on show
+        WS_EX_TOPMOST     = 0x00000008  # Keep on top
+        WS_EX_TOOLWINDOW  = 0x00000080  # Hide from taskbar and alt-tab focus
+
         current_styles = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(
-            hwnd, 
-            GWL_EXSTYLE, 
-            current_styles | WS_EX_TRANSPARENT | WS_EX_LAYERED
-        )
+        new_styles = current_styles | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW
+        
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_styles)
+
+        # SW_SHOWNOACTIVATE (4) reveals window without stealing active focus
+        ctypes.windll.user32.ShowWindow(hwnd, 4)
 
     def poll_network_data(self):
         # Checks the socket for incoming data from the tracker worker every 100ms

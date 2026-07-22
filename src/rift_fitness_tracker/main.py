@@ -1,3 +1,4 @@
+import sys
 import time
 import threading
 from riot_api import RiotAPIClient
@@ -9,13 +10,13 @@ def authenticate_summoner(api_client):
     while True:
         user_data = load_user_data()
         name = user_data.get("gameName")
+        tag = user_data.get("tagLine")
     
         if name:
-            # If we have the name, greet them and bypass the prompt
-            print(f"Welcome back, {name}!")
-            return user_data.get("puuid"), f"{user_data.get("gameName")}#{user_data.get("tagLine")}"
+            print(f"Welcome back, {name}!", flush=True)
+            sys.stdout.flush()
+            return user_data.get("puuid"), f"{name}#{tag}"
         else:
-            # If we don't have the name, ask for it and save it
             riot_id = input("Input summoner name (Name#TAG):\n").strip()
         
             if "#" not in riot_id:
@@ -84,7 +85,8 @@ def main():
 
         def exit_application():
             print("\n[SYSTEM] Exiting application. Goodbye!")
-            worker.stop_overlay_process()
+            if hasattr(worker, 'stop_overlay_process'):
+                worker.stop_overlay_process()
             exit()
 
         menu_options = {
@@ -110,7 +112,8 @@ def main():
     except (KeyboardInterrupt, EOFError):
         # Catches a global Ctrl+C at the menu level
         print("\n\n[SYSTEM] Execution interrupted by user. Exiting gracefully... Goodbye!")
-        worker.stop_overlay_process()
+        if 'worker' in locals() and hasattr(worker, 'stop_overlay_process'):
+            worker.stop_overlay_process()
 
 if __name__ == '__main__':
     main()

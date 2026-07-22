@@ -18,9 +18,8 @@ class LiveTrackerWorker:
         self.api = api_client
         self.db = db
         self.stop_event = threading.Event()
+        self.overlay_process = None
         multiprocessing.freeze_support()
-
-        self.start_overlay_process()
 
     def send_data_to_overlay(self, data):
         try:
@@ -206,6 +205,7 @@ class LiveTrackerWorker:
 
 #region Process Management Helpers
     def start_overlay_process(self):
+        """Launch background process for overlay UI."""
         self.overlay_process = multiprocessing.Process(target=overlay.start_overlay, daemon=True)
         self.overlay_process.start()
 
