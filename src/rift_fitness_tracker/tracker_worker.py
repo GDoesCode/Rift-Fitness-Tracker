@@ -1,7 +1,9 @@
 import time
-import socket
 import json
+import socket
+import overlay
 import threading
+import multiprocessing
 from config import DEATH_PUNISHMENT_MULTIPLIER, CS_PUNISHMENT_MULTIPLIER, LOSS_PUNISHMENT_MULTIPLIER, DEMOTION_PUNISHMENT_MULTIPLIER, Tier, Rank
 from riot_api import RiotAPIClient
 from database import RiftFitnessTrackerDatabase
@@ -16,6 +18,14 @@ class LiveTrackerWorker:
         self.api = api_client
         self.db = db
         self.stop_event = threading.Event()
+        multiprocessing.freeze_support()
+
+        # Launch overlay in a background process
+        self.overlay_process = multiprocessing.Process(
+            target=overlay.start_overlay,  
+            daemon=True
+        )
+        self.overlay_process.start()
 
     def send_data_to_overlay(self, data):
         try:
@@ -48,6 +58,8 @@ class LiveTrackerWorker:
         game_active = None
         game_id = None
         last_kda = None
+
+        self.overlay_process = self.ensure_overlay_running(self.overlay_process)
 
         self.send_data_to_overlay({"status": "SCANNING..."})
 
@@ -196,3 +208,25 @@ class LiveTrackerWorker:
             if p.get("puuid") == self.puuid:
                 self.rank_before = rank_before
                 return p
+
+#region Process Management Helpers
+    def start_overlay_process(self):
+        p = multiprocessing.Process(target=overlay.start_overlay, daemon=True)
+        p.start()
+        return p
+
+    def ensure_overlay_running(self):
+        """Checks if overlay process is alive; restarts it if closed/crashed."""
+        if self.overlay_process is None or not self.overlay_process.is_alive():
+            print("[SYSTEM] Overlay process off or closed. Launching overlay window...")
+            return self.start_overlay_process()
+        return self.overlay_process
+
+    def stop_overlay_process(self):
+        """Gracefully terminates the background overlay process."""
+        if self.overlay_process and self.overlay_process.is_alive():
+            print("[SYSTEM] Shutting down overlay process...")
+            self.overlay_process.terminate()
+            self.overlay_process.join()
+
+#endregion

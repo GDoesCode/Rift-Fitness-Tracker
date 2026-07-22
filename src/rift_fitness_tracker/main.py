@@ -1,10 +1,8 @@
 import time
-import overlay
 import threading
-import multiprocessing
-from database import RiftFitnessTrackerDatabase
 from riot_api import RiotAPIClient
 from tracker_worker import LiveTrackerWorker
+from database import RiftFitnessTrackerDatabase
 from config import load_user_data, save_riot_id
 
 def authenticate_summoner(api_client):
@@ -86,6 +84,7 @@ def main():
 
         def exit_application():
             print("\n[SYSTEM] Exiting application. Goodbye!")
+            worker.stop_overlay_process()
             exit()
 
         menu_options = {
@@ -112,15 +111,5 @@ def main():
         # Catches a global Ctrl+C at the menu level
         print("\n\n[SYSTEM] Execution interrupted by user. Exiting gracefully... Goodbye!")
 
-
 if __name__ == '__main__':
-    multiprocessing.freeze_support()
-
-    # Launch overlay in a background process
-    overlay_process = multiprocessing.Process(
-        target=overlay.start_overlay, 
-        daemon=True
-    )
-    overlay_process.start()
-
     main()

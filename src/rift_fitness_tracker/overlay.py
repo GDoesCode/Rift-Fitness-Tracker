@@ -7,14 +7,14 @@ class RiotTrackerOverlay:
     def __init__(self, root):
         self.root = root
         
-        # 1. Window Setup (Using transparent purple chroma key)
+        # Window Setup (Using transparent purple chroma key)
         self.root.overrideredirect(True) 
         self.root.geometry("300x90+0+0")
         self.root.attributes("-topmost", True)
         self.root.attributes("-transparentcolor", "purple")
         self.root.config(bg="purple")
         
-        # 2. UI Elements
+        # UI Elements
         self.label = tk.Label(
             self.root, 
             text="STARTING...", 
@@ -25,7 +25,7 @@ class RiotTrackerOverlay:
         )
         self.label.pack(expand=True, fill="both", padx=10, pady=10)
         
-        # 3. Setup a Non-Blocking TCP Socket directly on the main thread
+        # Setup a Non-Blocking TCP Socket directly on the main thread
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind(('127.0.0.1', 5555))
@@ -34,11 +34,11 @@ class RiotTrackerOverlay:
         # Tells Python not to wait around if no data is ready
         self.server.setblocking(False) 
         
-        # 4. Inject Windows Click-Through Styles
+        # Inject Windows Click-Through Styles
         self.root.update()
         self.make_window_click_through()
         
-        # 5. Start the single-threaded network polling loop
+        # Start the single-threaded network polling loop
         self.poll_network_data()
 
     def make_window_click_through(self):
@@ -100,6 +100,15 @@ class RiotTrackerOverlay:
         # Check the socket again in 100 milliseconds
         self.root.after(100, self.poll_network_data)
 
+    def cleanup(self):
+        """Safely closes the TCP socket when the window closes."""
+        try:
+            if hasattr(self, 'server') and self.server:
+                self.server.close()
+                print("[OVERLAY] TCP socket closed.")
+        except Exception as e:
+            print(f"[OVERLAY] Error during cleanup: {e}")
+
 def start_overlay():
     root = tk.Tk()
     app = RiotTrackerOverlay(root)
@@ -114,6 +123,7 @@ def start_overlay():
         root.mainloop()
     except KeyboardInterrupt:
         app.cleanup()
+        root.destroy()
 
 if __name__ == "__main__":
     start_overlay()
