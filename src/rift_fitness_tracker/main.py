@@ -9,11 +9,6 @@ from tracker_worker import LiveTrackerWorker
 from database import RiftFitnessTrackerDatabase
 from config import load_user_data, save_riot_id
 
-CURRENT_VERSION = get_app_version()
-REPO_OWNER = "GDoesCode"
-REPO_NAME = "Rift-Fitness-Tracker"
-EXE_NAME = os.path.basename(sys.executable) if getattr(sys, 'frozen', False) else "myapp.exe"
-
 def get_app_version() -> str:
     try:
         from rift_fitness_tracker._version import VERSION
@@ -26,6 +21,12 @@ def get_app_version() -> str:
         return tag.lstrip("v")
     except Exception:
         return "0.0.0-dev"  # Default version if all else fails
+    
+CURRENT_VERSION = get_app_version()
+REPO_OWNER = "GDoesCode"
+REPO_NAME = "Rift-Fitness-Tracker"
+EXE_NAME = os.path.basename(sys.executable) if getattr(sys, 'frozen', False) else "myapp.exe"
+
 
 def check_for_updates():
     # Only run auto-update logic when running as a compiled binary/exe
@@ -168,7 +169,7 @@ def main():
             print("\n[SYSTEM] Exiting application. Goodbye!")
             if hasattr(worker, 'stop_overlay_process'):
                 worker.stop_overlay_process()
-            exit()
+            sys.exit(0)
 
         menu_options = {
             "1": track_historical,
