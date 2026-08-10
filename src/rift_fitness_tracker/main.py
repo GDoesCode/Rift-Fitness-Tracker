@@ -2,8 +2,8 @@ import os
 import sys
 import time
 import requests
-import subprocess
 import threading
+import subprocess
 from riot_api import RiotAPIClient
 from tracker_worker import LiveTrackerWorker
 from database import RiftFitnessTrackerDatabase
