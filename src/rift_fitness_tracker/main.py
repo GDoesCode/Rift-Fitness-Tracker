@@ -193,7 +193,7 @@ def main():
 
     except (KeyboardInterrupt, EOFError):
         # Catches a global Ctrl+C at the menu level
-        print("\n\n[SYSTEM] Execution interrupted by user. Exiting gracefully... Goodbye!")
+        print("\n\n[SYSTEM] Execution interrupted by user. Goodbye!")
         if 'worker' in locals() and hasattr(worker, 'stop_overlay_process'):
             worker.stop_overlay_process()
 
