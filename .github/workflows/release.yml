@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensures git tags are available for git describe
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,13 +34,14 @@ jobs:
           }
 
       - name: Build Executable with PyInstaller
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
         run: |
           pyinstaller --noconfirm rift_fitness_tracker.spec
 
       - name: Zip Executable Output
         shell: powershell
         run: |
-          # Zips the generated .exe from dist/ into the root folder
           Compress-Archive -Path "dist/RiftFitnessTracker.exe" -DestinationPath "RiftFitnessTracker-Windows.zip" -Force
 
       - name: Create GitHub Release

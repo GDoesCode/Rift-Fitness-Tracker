@@ -9,10 +9,23 @@ from tracker_worker import LiveTrackerWorker
 from database import RiftFitnessTrackerDatabase
 from config import load_user_data, save_riot_id
 
-CURRENT_VERSION = "1.0.0"
-REPO_OWNER = "your-username"
-REPO_NAME = "your-repo"
+CURRENT_VERSION = get_app_version()
+REPO_OWNER = "GDoesCode"
+REPO_NAME = "Rift-Fitness-Tracker"
 EXE_NAME = os.path.basename(sys.executable) if getattr(sys, 'frozen', False) else "myapp.exe"
+
+def get_app_version() -> str:
+    try:
+        from rift_fitness_tracker._version import VERSION
+        return VERSION
+    except ImportError:
+        pass
+
+    try:
+        tag = subprocess.check_output(["git", "describe", "--tags", "--always"], stderr=subprocess.DEVNULL).decode("utf-8").strip()
+        return tag.lstrip("v")
+    except Exception:
+        return "0.0.0-dev"  # Default version if all else fails
 
 def check_for_updates():
     # Only run auto-update logic when running as a compiled binary/exe
