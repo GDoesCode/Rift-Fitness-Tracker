@@ -2,7 +2,7 @@ import requests
 
 class RiftFitnessTrackerDatabase:
     def __init__(self):
-        self.server_url = "http://6.tcp.eu.ngrok.io:19053/api" # Port 8000
+        self.server_url = "https://homeserver.tailc3477d.ts.net/api" # Port 8000
         # Creating a Session handles connection pooling automatically
         self.session = requests.Session()
 
