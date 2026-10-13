@@ -1,10 +1,92 @@
+import os
 import sys
 import time
+import requests
 import threading
+import subprocess
 from riot_api import RiotAPIClient
 from tracker_worker import LiveTrackerWorker
 from database import RiftFitnessTrackerDatabase
 from config import load_user_data, save_riot_id
+
+def get_app_version() -> str:
+    try:
+        from rift_fitness_tracker._version import VERSION
+        return VERSION
+    except ImportError:
+        pass
+
+    try:
+        tag = subprocess.check_output(["git", "describe", "--tags", "--always"], stderr=subprocess.DEVNULL).decode("utf-8").strip()
+        return tag.lstrip("v")
+    except Exception:
+        return "0.0.0-dev"  # Default version if all else fails
+    
+CURRENT_VERSION = get_app_version()
+REPO_OWNER = "GDoesCode"
+REPO_NAME = "Rift-Fitness-Tracker"
+EXE_NAME = os.path.basename(sys.executable) if getattr(sys, 'frozen', False) else "myapp.exe"
+
+
+def check_for_updates():
+    # Only run auto-update logic when running as a compiled binary/exe
+    if not getattr(sys, 'frozen', False):
+        print("[Dev Mode] Skipping update check.")
+        return
+
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
+    
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        latest_version = data["tag_name"].lstrip("v")
+
+        if latest_version > CURRENT_VERSION:
+            print(f"\n[!] Update available: v{latest_version} (Current: v{CURRENT_VERSION})")
+            choice = input("Would you like to update now? (y/n): ").strip().lower()
+            if choice == 'y':
+                apply_update(data)
+    except Exception as e:
+        print(f"[!] Update check failed: {e}")
+
+def apply_update(release_data):
+    # Search release assets for the .exe file
+    exe_asset = None
+    for asset in release_data.get("assets", []):
+        if asset["name"].endswith(".exe"):
+            exe_asset = asset
+            break
+
+    if not exe_asset:
+        print("[!] No .exe asset found in the latest release.")
+        return
+
+    download_url = exe_asset["browser_download_url"]
+    new_exe_path = "update_temp.exe"
+
+    print(f"Downloading {exe_asset['name']}...")
+    res = requests.get(download_url, stream=True)
+    with open(new_exe_path, "wb") as f:
+        for chunk in res.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    print("Download complete. Applying update...")
+    
+    # Create a batch script to swap executables after this process exits
+    batch_script = f"""@echo off
+timeout /t 2 /nobreak > NUL
+move /y "{new_exe_path}" "{EXE_NAME}"
+start "" "{EXE_NAME}"
+del "%~f0"
+"""
+    with open("updater.bat", "w") as f:
+        f.write(batch_script)
+
+    # Launch the updater script in the background and terminate current process
+    subprocess.Popen(["cmd.exe", "/c", "updater.bat"], creationflags=subprocess.CREATE_NEW_CONSOLE)
+    sys.exit(0)
 
 def authenticate_summoner(api_client):
     while True:
@@ -87,7 +169,7 @@ def main():
             print("\n[SYSTEM] Exiting application. Goodbye!")
             if hasattr(worker, 'stop_overlay_process'):
                 worker.stop_overlay_process()
-            exit()
+            sys.exit(0)
 
         menu_options = {
             "1": track_historical,
@@ -111,7 +193,7 @@ def main():
 
     except (KeyboardInterrupt, EOFError):
         # Catches a global Ctrl+C at the menu level
-        print("\n\n[SYSTEM] Execution interrupted by user. Exiting gracefully... Goodbye!")
+        print("\n\n[SYSTEM] Execution interrupted by user. Goodbye!")
         if 'worker' in locals() and hasattr(worker, 'stop_overlay_process'):
             worker.stop_overlay_process()
 
